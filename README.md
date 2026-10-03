@@ -56,12 +56,22 @@ The graphical user interface is built on PyGObject (GTK 3). Install the necessar
 
 ## Installation & Setup
 
+Protontricks Legacy version:
 To clone and run the application:
 
 ```bash
-git clone https://github.com/ZeNx98/GenPatcher-Linux.git
+git clone https://github.com/Fennek88/GenPatcher-Linux.git
 cd GenPatcher-Linux
 python3 GenPatcher.py
+```
+
+Protontricks Flatpak version:
+To clone and run the application:
+
+```bash
+git clone https://github.com/Fennek88/GenPatcher-Linux.git
+cd GenPatcher-Linux
+python3 GenPatcher_fp.py
 ```
 
 ---
