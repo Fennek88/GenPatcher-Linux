@@ -33,7 +33,7 @@ The graphical user interface is built on PyGObject (GTK 3). Install the necessar
   ```
 
 ### 2. Proton / Wine Compatibility Helpers
-* **Protontricks**: Required to configure DLL overrides within the Proton prefix (directing the environment to load native community Direct3D wrapper DLLs). Install it using one of the following commands:
+* **Protontricks**: Required to configure DLL overrides within the Proton prefix (directing the environment to load native community Direct3D wrapper DLLs). GenPatcher auto-detects Flatpak or a native `protontricks` binary (Flatpak is preferred when both are installed). Install it using one of the following commands:
 
   * **Arch Linux / Manjaro / CachyOS**:
     ```bash
@@ -56,28 +56,18 @@ The graphical user interface is built on PyGObject (GTK 3). Install the necessar
 
 ## Installation & Setup
 
-Protontricks Legacy version:
 To clone and run the application:
 
 ```bash
-git clone https://github.com/Fennek88/GenPatcher-Linux.git
+git clone https://github.com/Fennek88/GenPatcher-Linux
 cd GenPatcher-Linux
 python3 GenPatcher.py
-```
-
-Protontricks Flatpak version:
-To clone and run the application:
-
-```bash
-git clone https://github.com/Fennek88/GenPatcher-Linux.git
-cd GenPatcher-Linux
-python3 GenPatcher_fp.py
 ```
 
 ---
 
 ## Screenshots
 
-![Screenshot 1](Images/Screenshots/screenshot%201.png)
+![Screenshot](Images/Screenshots/screenshot1.png)
 
-![Screenshot 2](Images/Screenshots/screenshot%202.png)
+![Screenshot 2](Images/Screenshots/screenshot2.png)
