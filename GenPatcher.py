@@ -1041,9 +1041,17 @@ class GenPatcherGTK(Gtk.Window):
         return "0"
 
     def is_newer_version(self, current, latest):
-        current = current.strip()
-        latest = latest.strip()
+        if len(current) > 6:
+            current, suffix_current = current.split("_", 1)
+        current = current[-2:] + current[:-2]
+        if len(latest) > 6:
+            latest, suffix_latest = latest.split("_", 1)
+        latest = latest[-2:] + latest[:-2]
         if current == latest:
+            if suffix_current == suffix_latest:
+                return False
+            else:
+                return suffix_latest != suffix_current
             return False
         try:
             return int(latest) > int(current)
@@ -1123,13 +1131,16 @@ class GenPatcherGTK(Gtk.Window):
         try:
             self.update_progress(10, tr("console_checking_client"))
             latest_version, latest_url = self.scrape_latest_online_version()
-            if latest_version:
+            if latest_version and latest_version.lower() != "fail":
                 current_version = self.get_installed_online_version()
                 if self.is_newer_version(current_version, latest_version):
                     GLib.idle_add(self.prompt_for_client_update, latest_version, latest_url)
                 else:
                     GLib.idle_add(self.show_message_box, tr("no_update_title"), tr("no_update_text"))
                     self.update_progress(100, tr("no_update_text"))
+            elif latest_version.lower()  == "fail":
+                GLib.idle_add(self.show_message_box, tr("msgbox_network_title"), tr("msgbox_network_text"))
+                self.update_progress(0, tr("msgbox_error_update"))
             else:
                 GLib.idle_add(self.show_message_box, tr("msgbox_error_title"), tr("msgbox_error_update"))
                 self.update_progress(0, tr("msgbox_error_update"))
