@@ -203,6 +203,17 @@ combobox:hover {
     border-color: #4d9de0;
 }
 
+.protontricks-backend-combo:disabled,
+.protontricks-backend-combo:disabled button {
+    background-color: #181818;
+    color: #525252;
+    border-color: #242424;
+}
+
+.protontricks-backend-combo:disabled cellview {
+    color: #525252;
+}
+
 combobox button {
     background-color: transparent;
     border: none;

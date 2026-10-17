@@ -4,6 +4,8 @@ import sys
 import shutil
 import threading
 import subprocess
+import html
+import re
 
 ZH_APP_ID = "2732960"
 ZH_GAME_FOLDER = "Command & Conquer Generals - Zero Hour"
@@ -17,42 +19,86 @@ DOCS_DIR = ""
 ZH_DOCS_DATA = ""
 CCG_DOCS_DATA = ""
 
-protontricks_backend = None  # "native" | "flatpak" | False (none found)
+from CSS.styles import CSS_STYLE
+from lang.translations import TRANSLATIONS
 
-def translate(key):
+protontricks_backends = None
+protontricks_selected_backend = None
+
+def detect_system_language(supported):
+    """Detect the system language and map it to a supported translation key.
+
+    Checks LANGUAGE, LC_ALL, LC_MESSAGES, and LANG (plus locale.getdefaultlocale).
+    Returns a key present in [supported]; pass [supported] as parameter e.g. frozenset(TRANSLATIONS); English ("en") is the default.
+    """
+    candidates = []
+
+    for env_var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
+        value = os.environ.get(env_var, "").strip()
+        if value:
+            # LANGUAGE may be a colon-separated preference list (e.g. "de:en_US")
+            candidates.extend(value.split(":"))
+
+    try:
+        import locale
+        loc = locale.getlocale()
+        if loc and loc[0]:
+            candidates.append(loc[0])
+    except Exception:
+        pass
+
+    for cand in candidates:
+        cand = cand.strip()
+        if not cand or cand == "C" or cand.startswith("C."):
+            continue
+        # e.g. "de_DE.UTF-8" -> "de"
+        code = cand.split(".")[0].split("_")[0].lower()
+        if code in supported:
+            return code
+    return "en"
+
+
+CURRENT_LANG = detect_system_language(frozenset(TRANSLATIONS))
+def tr(key):
     """globally accessible translate function to have access before the gui is built"""
     return TRANSLATIONS.get(CURRENT_LANG, TRANSLATIONS["en"]).get(key, key)
 
 def detect_protontricks():
     """Detect installed protontricks. Prefers Flatpak (better maintained), then native."""
-    global protontricks_backend
-    if protontricks_backend is not None:
-        return protontricks_backend if protontricks_backend else None
+    global protontricks_backends, protontricks_selected_backend
+    if protontricks_backends is None:
+        detected_backends = []
+        if shutil.which("flatpak"):
+            try:
+                res = subprocess.run(
+                    ["flatpak", "info", PROTONTRICKS_FLATPAK_ID],
+                    capture_output=True,
+                    text=True,
+                )
+                if res.returncode == 0:
+                    detected_backends.append("flatpak")
+            except OSError:
+                pass
 
-    if shutil.which("flatpak"):
-        try:
-            res = subprocess.run(
-                ["flatpak", "info", PROTONTRICKS_FLATPAK_ID],
-                capture_output=True,
-                text=True,
-            )
-            if res.returncode == 0:
-                protontricks_backend = "flatpak"
-                return protontricks_backend
-        except OSError:
-            pass
+        if shutil.which("protontricks"):
+            detected_backends.append("native")
 
-    if shutil.which("protontricks"):
-        protontricks_backend = "native"
-        return protontricks_backend
+        protontricks_backends = tuple(detected_backends)
 
-    protontricks_backend = False
-    return None
+    preferred_backend = next(
+        (backend for backend in ("flatpak", "native") if backend in protontricks_backends),
+        None,
+    )
+    if protontricks_selected_backend not in protontricks_backends:
+        protontricks_selected_backend = preferred_backend
+    return preferred_backend
 
 
 def protontricks_cmd(wine_command, app_id=ZH_APP_ID):
     """Build a protontricks -c argv list for the detected installation."""
     backend = detect_protontricks()
+    if protontricks_selected_backend in protontricks_backends:
+        backend = protontricks_selected_backend
     if backend == "native":
         return ["protontricks", "-c", wine_command, str(app_id)]
     if backend == "flatpak":
@@ -61,7 +107,7 @@ def protontricks_cmd(wine_command, app_id=ZH_APP_ID):
             str(app_id), "-c", wine_command,
         ]
     raise RuntimeError(
-        translate("protontricks_notfound") + f" {PROTONTRICKS_FLATPAK_ID})."
+        tr("protontricks_notfound") + f" {PROTONTRICKS_FLATPAK_ID}."
     )
 
 
@@ -162,54 +208,11 @@ try:
     import gi
     gi.require_version('Gtk', '3.0')
     from gi.repository import Gtk, Gdk, GLib, GdkPixbuf
-except ImportError:
-    print(translate("console_error_gtk"))
+except (ImportError, ValueError):
+    print(tr("console_error_gtk"))
     sys.exit(1)
 
-from styles import CSS_STYLE
-from translations import TRANSLATIONS
-
-def detect_system_language(supported):
-    """Detect the system language and map it to a supported translation key.
-
-    Checks LANGUAGE, LC_ALL, LC_MESSAGES, and LANG (plus locale.getdefaultlocale).
-    Returns a key present in [supported]; pass [supported] as parameter e.g. frozenset{TRANSLATIONS}; English ("en") is the default.
-    """
-    candidates = []
-
-    for env_var in ("LANGUAGE", "LC_ALL", "LC_MESSAGES", "LANG"):
-        value = os.environ.get(env_var, "").strip()
-        if value:
-            # LANGUAGE may be a colon-separated preference list (e.g. "de:en_US")
-            candidates.extend(value.split(":"))
-
-    try:
-        import locale
-        loc = locale.getlocale()
-        if loc and loc[0]:
-            candidates.append(loc[0])
-    except Exception:
-        pass
-
-    for cand in candidates:
-        cand = cand.strip()
-        if not cand or cand == "C" or cand.startswith("C."):
-            continue
-        # e.g. "de_DE.UTF-8" -> "de"
-        code = cand.split(".")[0].split("_")[0].lower()
-        if code in supported:
-            return code
-    return "en"
-
-
-CURRENT_LANG = detect_system_language(frozenset(TRANSLATIONS))
-
-
-
 class GenPatcherGTK(Gtk.Window):
-    def tr(self, key):
-        return translate(key)
-
     def __init__(self):
         super().__init__(title="GenPatcher Linux")
         self.set_default_size(800, 600)
@@ -267,7 +270,7 @@ class GenPatcherGTK(Gtk.Window):
         """Re-run dynamic detection; show warning if game not found."""
         found = detect_steam_game()
         if not found:
-            print(self.tr("console_autodetect_warning"))
+            print(tr("console_autodetect_warning"))
 
     def create_layout(self):
         self.main_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL)
@@ -303,7 +306,7 @@ class GenPatcherGTK(Gtk.Window):
             
         self.sidebar_box.pack_start(logo_box, False, False, 0)
         
-        self.ver_lbl = Gtk.Label(label=self.tr("ver_label"))
+        self.ver_lbl = Gtk.Label(label=tr("ver_label"))
         self.ver_lbl.get_style_context().add_class("subtitle")
         self.ver_lbl.set_xalign(0)
         self.ver_lbl.set_margin_start(15)
@@ -321,7 +324,7 @@ class GenPatcherGTK(Gtk.Window):
         self.gui_lang_combo.connect("changed", self.on_gui_lang_changed)
         self.sidebar_box.pack_end(self.gui_lang_combo, False, False, 0)
 
-        self.lang_lbl = Gtk.Label(label=self.tr("lang_label"))
+        self.lang_lbl = Gtk.Label(label=tr("lang_label"))
         self.lang_lbl.get_style_context().add_class("subtitle")
         self.lang_lbl.set_margin_top(15)
         self.lang_lbl.set_margin_bottom(5)
@@ -333,10 +336,10 @@ class GenPatcherGTK(Gtk.Window):
         self.nav_btns = {}
         
         navs = [
-            (self.tr("apply_fixes"), "fixes"),
-            (self.tr("gentool"), "gentool"),
-            (self.tr("addons"), "addons"),
-            (self.tr("about"), "about")
+            (tr("apply_fixes"), "fixes"),
+            (tr("gentool"), "gentool"),
+            (tr("addons"), "addons"),
+            (tr("about"), "about")
         ]
         
         for label, page_id in navs:
@@ -373,73 +376,90 @@ class GenPatcherGTK(Gtk.Window):
         self.diagnostics = check_paths()
         
         if self.diagnostics["game_detected"]:
-            self.game_lbl.set_markup(self.tr("game_found"))
+            self.game_lbl.set_markup(tr("game_found"))
             self.btn_open_game.set_sensitive(True)
             if self.diagnostics["fixes_applied"]:
                 self.btn_apply.set_sensitive(False)
-                self.btn_apply.set_label(self.tr("btn_apply_done"))
+                self.btn_apply.set_label(tr("btn_apply_done"))
             else:
                 self.btn_apply.set_sensitive(True)
-                self.btn_apply.set_label(self.tr("btn_apply"))
+                self.btn_apply.set_label(tr("btn_apply"))
         else:
-            self.game_lbl.set_markup(self.tr("game_missing"))
+            self.game_lbl.set_markup(tr("game_missing"))
             self.btn_open_game.set_sensitive(False)
             self.btn_apply.set_sensitive(False)
-            self.btn_apply.set_label(self.tr("btn_apply"))
+            self.btn_apply.set_label(tr("btn_apply"))
             
         if self.diagnostics["prefix_detected"]:
-            self.prefix_lbl.set_markup(self.tr("prefix_found"))
+            self.prefix_lbl.set_markup(tr("prefix_found"))
             self.btn_open_prefix.set_sensitive(True)
         else:
-            self.prefix_lbl.set_markup(self.tr("prefix_missing"))
+            self.prefix_lbl.set_markup(tr("prefix_missing"))
             self.btn_open_prefix.set_sensitive(False)
             
         self.btn_install_protontricks.set_sensitive(False)
-        self.btn_install_protontricks.set_label(self.tr("btn_installed"))
-        self.btn_install_protontricks.set_tooltip_text(self.tr("btn_installed_tooltip"))
+        self.btn_install_protontricks.set_label(tr("btn_installed"))
+        self.btn_install_protontricks.set_tooltip_text(tr("btn_installed_tooltip"))
         pt_backend = self.diagnostics.get("protontricks_backend")
-        if pt_backend == "native":
-            self.protontricks_lbl.set_markup(self.tr("protontricks_legacy"))
-        elif pt_backend == "flatpak":
-            self.protontricks_lbl.set_markup(self.tr("protontricks_flatpak"))
+        pt_backends = self.diagnostics.get("protontricks_backends", ())
+        both_backends_installed = "flatpak" in pt_backends and "native" in pt_backends
+        self.protontricks_backend_combo.set_sensitive(both_backends_installed)
+        if both_backends_installed:
+            selected_backend = (
+                protontricks_selected_backend
+                if protontricks_selected_backend in pt_backends
+                else "flatpak"
+            )
+            self.protontricks_backend_combo.set_active_id(selected_backend)
+        elif pt_backend in ("flatpak", "native"):
+            self.protontricks_backend_combo.set_active_id(pt_backend)
         else:
-            self.protontricks_lbl.set_markup(self.tr("protontricks_missing"))
+            self.protontricks_backend_combo.set_active(-1)
+
+        if both_backends_installed:
+            self.protontricks_lbl.set_markup(tr("protontricks_both"))
+        elif pt_backend == "native":
+            self.protontricks_lbl.set_markup(tr("protontricks_legacy"))
+        elif pt_backend == "flatpak":
+            self.protontricks_lbl.set_markup(tr("protontricks_flatpak"))
+        else:
+            self.protontricks_lbl.set_markup(tr("protontricks_missing"))
             self.btn_install_protontricks.set_sensitive(True)
-            self.btn_install_protontricks.set_tooltip_text(self.tr("btn_install_tooltip"))
-            self.btn_install_protontricks.set_label(self.tr("btn_install"))
+            self.btn_install_protontricks.set_tooltip_text(tr("btn_install_tooltip"))
+            self.btn_install_protontricks.set_label(tr("btn_install"))
             
 
         if self.diagnostics["gentool_installed"]:
             self.btn_gentool.set_sensitive(False)
-            self.btn_gentool.set_label(self.tr("btn_gentool_done"))
+            self.btn_gentool.set_label(tr("btn_gentool_done"))
         else:
             self.btn_gentool.set_sensitive(self.diagnostics["game_detected"])
-            self.btn_gentool.set_label(self.tr("btn_gentool"))
+            self.btn_gentool.set_label(tr("btn_gentool"))
 
         if self.diagnostics.get("hud_installed", False):
-            self.btn_hud.set_label(self.tr("btn_hud_done"))
+            self.btn_hud.set_label(tr("btn_hud_done"))
         else:
-            self.btn_hud.set_label(self.tr("btn_hud"))
+            self.btn_hud.set_label(tr("btn_hud"))
 
         if self.diagnostics.get("hotkeys_applied", False):
-            self.btn_hotkeys.set_label(self.tr("btn_hk_done"))
+            self.btn_hotkeys.set_label(tr("btn_hk_done"))
         else:
-            self.btn_hotkeys.set_label(self.tr("btn_hk"))
+            self.btn_hotkeys.set_label(tr("btn_hk"))
 
         if self.diagnostics.get("maps_installed", False):
-            self.btn_maps.set_label(self.tr("btn_maps_done"))
+            self.btn_maps.set_label(tr("btn_maps_done"))
         else:
-            self.btn_maps.set_label(self.tr("btn_maps"))
+            self.btn_maps.set_label(tr("btn_maps"))
 
         if self.diagnostics.get("genlauncher_installed", False):
-            self.btn_genlauncher.set_label(self.tr("btn_gl_done"))
+            self.btn_genlauncher.set_label(tr("btn_gl_done"))
         else:
-            self.btn_genlauncher.set_label(self.tr("btn_gl"))
+            self.btn_genlauncher.set_label(tr("btn_gl"))
 
         if self.diagnostics.get("fonts_installed", False):
-            self.btn_fonts.set_label(self.tr("btn_font_done"))
+            self.btn_fonts.set_label(tr("btn_font_done"))
         else:
-            self.btn_fonts.set_label(self.tr("btn_font"))
+            self.btn_fonts.set_label(tr("btn_font"))
 
     def write_log(self, text):
         buf = self.console_view.get_buffer()
@@ -458,7 +478,7 @@ class GenPatcherGTK(Gtk.Window):
 
     def copy_file_helper(self, src, dst):
         if not os.path.exists(src):
-            self.thread_log(self.tr("console_diag_sourcefile") + f" {os.path.basename(src)}")
+            self.thread_log(tr("console_diag_sourcefile") + f" {os.path.basename(src)}")
             return False
             
         if os.path.exists(dst) or os.path.islink(dst):
@@ -473,7 +493,7 @@ class GenPatcherGTK(Gtk.Window):
         shutil.copy2(src, dst)
         if dst.endswith(".exe") or dst.endswith(".dat") or dst.endswith(".dll"):
             os.chmod(dst, 0o755)
-        self.thread_log(self.tr("console_diag_copied") + f" {os.path.basename(src)} -> {os.path.basename(dst)}")
+        self.thread_log(tr("console_diag_copied") + f" {os.path.basename(src)} -> {os.path.basename(dst)}")
         return True
 
     def rename_file_helper(self, filepath):
@@ -481,23 +501,23 @@ class GenPatcherGTK(Gtk.Window):
             bak_path = filepath + ".bak"
             if not os.path.exists(bak_path):
                 shutil.move(filepath, bak_path)
-                self.thread_log(self.tr("console_diag_disabled") + f" {os.path.basename(filepath)} -> {os.path.basename(filepath)}.bak")
+                self.thread_log(tr("console_diag_disabled") + f" {os.path.basename(filepath)} -> {os.path.basename(filepath)}.bak")
             else:
                 os.remove(filepath)
-                self.thread_log(self.tr("console_diag_redundant") + f" {os.path.basename(filepath)}")
+                self.thread_log(tr("console_diag_redundant") + f" {os.path.basename(filepath)}")
 
     def extract_worker_7z(self, archive_path, output_dir):
         if not os.path.exists(archive_path):
-            self.thread_log(self.tr("console_archive_missing") + f" {os.path.basename(archive_path)}")
+            self.thread_log(tr("console_archive_missing") + f" {os.path.basename(archive_path)}")
             return False
-        self.thread_log(self.tr("console_archive_extracting") + f" {os.path.basename(archive_path)}...")
+        self.thread_log(tr("console_archive_extracting") + f" {os.path.basename(archive_path)}...")
         cmd = ["7z", "x", "-y", f"-o{output_dir}", archive_path]
         res = subprocess.run(cmd, capture_output=True, text=True)
         if res.returncode == 0:
-            self.thread_log(self.tr("console_archive_extracted") + f" {os.path.basename(archive_path)}")
+            self.thread_log(tr("console_archive_extracted") + f" {os.path.basename(archive_path)}")
             return True
         else:
-            self.thread_log(self.tr("console_archive_failed") + f" {os.path.basename(archive_path)}")
+            self.thread_log(tr("console_archive_failed") + f" {os.path.basename(archive_path)}")
             return False
 
     def extract_map_pack_worker(self, archive_path):
@@ -520,7 +540,7 @@ class GenPatcherGTK(Gtk.Window):
                         shutil.copytree(src_item, dst_item)
                     else:
                         shutil.copy2(src_item, dst_item)
-                self.thread_log(self.tr("console_maps_extracted_zh"))
+                self.thread_log(tr("console_maps_extracted_zh"))
 
             ccg_src = os.path.join(temp_dir, "CCG/Maps")
             if os.path.exists(ccg_src):
@@ -535,7 +555,7 @@ class GenPatcherGTK(Gtk.Window):
                         shutil.copytree(src_item, dst_item)
                     else:
                         shutil.copy2(src_item, dst_item)
-                self.thread_log(self.tr("console_maps_extracted_base"))
+                self.thread_log(tr("console_maps_extracted_base"))
                 
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
@@ -569,12 +589,12 @@ class GenPatcherGTK(Gtk.Window):
         page_box.set_margin_end(20)
         self.stack.add_named(page_box, "fixes")
         
-        self.fixes_title = Gtk.Label(label=self.tr("fixes_title"))
+        self.fixes_title = Gtk.Label(label=tr("fixes_title"))
         self.fixes_title.get_style_context().add_class("header-title")
         self.fixes_title.set_xalign(0)
         page_box.pack_start(self.fixes_title, False, False, 0)
         
-        self.fixes_sub = Gtk.Label(label=self.tr("fixes_subtitle"))
+        self.fixes_sub = Gtk.Label(label=tr("fixes_subtitle"))
         self.fixes_sub.get_style_context().add_class("subtitle")
         self.fixes_sub.set_xalign(0)
         self.fixes_sub.set_line_wrap(True)
@@ -590,7 +610,7 @@ class GenPatcherGTK(Gtk.Window):
         self.game_lbl.set_xalign(0)
         game_row.pack_start(self.game_lbl, True, True, 0)
         
-        self.btn_open_game = Gtk.Button(label=self.tr("btn_open"))
+        self.btn_open_game = Gtk.Button(label=tr("btn_open"))
         self.btn_open_game.get_style_context().add_class("btn-compact")
         self.btn_open_game.connect("clicked", lambda w: self.open_folder_in_fm(GAME_ROOT))
         game_row.pack_end(self.btn_open_game, False, False, 0)
@@ -601,7 +621,7 @@ class GenPatcherGTK(Gtk.Window):
         self.prefix_lbl.set_xalign(0)
         prefix_row.pack_start(self.prefix_lbl, True, True, 0)
         
-        self.btn_open_prefix = Gtk.Button(label=self.tr("btn_open"))
+        self.btn_open_prefix = Gtk.Button(label=tr("btn_open"))
         self.btn_open_prefix.get_style_context().add_class("btn-compact")
         self.btn_open_prefix.connect("clicked", lambda w: self.open_folder_in_fm(PREFIX_DIR))
         prefix_row.pack_end(self.btn_open_prefix, False, False, 0)
@@ -610,9 +630,20 @@ class GenPatcherGTK(Gtk.Window):
         protontricks_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
         self.protontricks_lbl = Gtk.Label()
         self.protontricks_lbl.set_xalign(0)
-        protontricks_row.pack_start(self.protontricks_lbl, True, True, 0)
+        protontricks_row.pack_start(self.protontricks_lbl, False, False, 0)
 
-        self.btn_install_protontricks = Gtk.Button(label=self.tr("btn_install"))
+        self.protontricks_backend_combo = Gtk.ComboBoxText()
+        self.protontricks_backend_combo.append("flatpak", "FLATPAK")
+        self.protontricks_backend_combo.append("native", "LEGACY")
+        self.protontricks_backend_combo.set_active_id("flatpak")
+        self.protontricks_backend_combo.connect(
+            "changed", self.on_protontricks_backend_changed
+        )
+        self.protontricks_backend_combo.set_sensitive(False)
+        self.protontricks_backend_combo.get_style_context().add_class("protontricks-backend-combo")
+        protontricks_row.pack_start(self.protontricks_backend_combo, False, False, 0)
+
+        self.btn_install_protontricks = Gtk.Button(label=tr("btn_install"))
         self.btn_install_protontricks.get_style_context().add_class("btn-compact")
         self.btn_install_protontricks.connect("clicked", lambda b: subprocess.Popen(["xdg-open", "https://github.com/Matoking/protontricks"]))
         protontricks_row.pack_end(self.btn_install_protontricks, False, False, 0)
@@ -623,7 +654,7 @@ class GenPatcherGTK(Gtk.Window):
         ctrl_box.set_spacing(8)
         page_box.pack_start(ctrl_box, False, False, 0)
         
-        self.btn_apply = Gtk.Button(label=self.tr("btn_apply"))
+        self.btn_apply = Gtk.Button(label=tr("btn_apply"))
         self.btn_apply.get_style_context().add_class("btn-accent")
         self.btn_apply.connect("clicked", self.start_patching)
         self.btn_apply.set_halign(Gtk.Align.FILL)
@@ -632,12 +663,12 @@ class GenPatcherGTK(Gtk.Window):
         locate_update_row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         ctrl_box.pack_start(locate_update_row, False, False, 0)
 
-        self.btn_locate = Gtk.Button(label=self.tr("btn_locate"))
+        self.btn_locate = Gtk.Button(label=tr("btn_locate"))
         self.btn_locate.get_style_context().add_class("btn-secondary")
         self.btn_locate.connect("clicked", self.on_locate_clicked)
         locate_update_row.pack_start(self.btn_locate, True, True, 0)
 
-        self.btn_check_update = Gtk.Button(label=self.tr("btn_check_update"))
+        self.btn_check_update = Gtk.Button(label=tr("btn_check_update"))
         self.btn_check_update.get_style_context().add_class("btn-secondary")
         self.btn_check_update.connect("clicked", self.on_check_update_clicked)
         locate_update_row.pack_start(self.btn_check_update, True, True, 0)
@@ -658,11 +689,11 @@ class GenPatcherGTK(Gtk.Window):
         self.console_view.set_wrap_mode(Gtk.WrapMode.WORD)
         self.console_view.get_style_context().add_class("console-view")
         scroll.add(self.console_view)
-        self.write_log(self.tr("console_welcome"))
+        self.write_log(tr("console_welcome"))
         
     def on_locate_clicked(self, button):
         dialog = Gtk.FileChooserDialog(
-            title=self.tr("btn_locate_diagtitle"),
+            title=tr("btn_locate_diagtitle"),
             parent=self,
             action=Gtk.FileChooserAction.OPEN
         )
@@ -672,13 +703,13 @@ class GenPatcherGTK(Gtk.Window):
         )
         
         filter_exe = Gtk.FileFilter()
-        filter_exe.set_name(self.tr("filefilter_gameexe") + " (generals.exe / Generals.exe)")
+        filter_exe.set_name(tr("filefilter_gameexe") + " (generals.exe / Generals.exe)")
         filter_exe.add_pattern("*generals.exe")
         filter_exe.add_pattern("*Generals.exe")
         dialog.add_filter(filter_exe)
         
         filter_all = Gtk.FileFilter()
-        filter_all.set_name(self.tr("filefilter_all"))
+        filter_all.set_name(tr("filefilter_all"))
         filter_all.add_pattern("*")
         dialog.add_filter(filter_all)
         
@@ -698,14 +729,14 @@ class GenPatcherGTK(Gtk.Window):
                     set_game_root(game_dir)
                     dialog.destroy()
                     self.load_diagnostics()
-                    self.write_log(self.tr("console_steamgamedir") + f" {GAME_ROOT}")
-                    self.show_message_box(self.tr("msgbox_success_title"), self.tr("msgbox_success_text_gamedir")+ f"\n{GAME_ROOT}")
+                    self.write_log(tr("console_steamgamedir") + f" {GAME_ROOT}")
+                    self.show_message_box(tr("msgbox_success_title"), tr("msgbox_success_text_gamedir") + f"\n{GAME_ROOT}")
                 else:
                     dialog.destroy()
                     self._ask_wine_prefix(game_dir)
                     return
             else:
-                self.show_message_box(self.tr("msgbox_error_title"), self.tr("msgbox_error_genexe"))
+                self.show_message_box(tr("msgbox_error_title"), tr("msgbox_error_genexe"))
                 
         dialog.destroy()
 
@@ -716,11 +747,11 @@ class GenPatcherGTK(Gtk.Window):
             flags=0,
             message_type=Gtk.MessageType.INFO,
             buttons=Gtk.ButtonsType.NONE,
-            text=self.tr("wine_dialog_title")
+            text=tr("wine_dialog_title")
         )
-        tutorial.format_secondary_markup(self.tr("wine_dialog_text"))
-        tutorial.add_button(self.tr("wine_dialog_button_cancel"), Gtk.ResponseType.CANCEL)
-        tutorial.add_button(self.tr("wine_dialog_button_select"), Gtk.ResponseType.OK)
+        tutorial.format_secondary_markup(tr("wine_dialog_text"))
+        tutorial.add_button(tr("wine_dialog_button_cancel"), Gtk.ResponseType.CANCEL)
+        tutorial.add_button(tr("wine_dialog_button_select"), Gtk.ResponseType.OK)
         tutorial.set_default_response(Gtk.ResponseType.OK)
 
         resp = tutorial.run()
@@ -730,7 +761,7 @@ class GenPatcherGTK(Gtk.Window):
             return
 
         prefix_dlg = Gtk.FileChooserDialog(
-            title=self.tr("wine_select_title"),
+            title=tr("wine_select_title"),
             parent=self,
             action=Gtk.FileChooserAction.SELECT_FOLDER
         )
@@ -748,8 +779,8 @@ class GenPatcherGTK(Gtk.Window):
 
             if not os.path.isdir(os.path.join(chosen_prefix, "drive_c")):
                 self.show_message_box(
-                    self.tr("msgbox_wine_title"),
-                    self.tr("msgbox_wine_text1") + f"\n{chosen_prefix}\n\n" + self.tr("msgbox_wine_text2")
+                    tr("msgbox_wine_title"),
+                    tr("msgbox_wine_text1") + f"\n{chosen_prefix}\n\n" + tr("msgbox_wine_text2")
                 )
                 return
 
@@ -772,12 +803,12 @@ class GenPatcherGTK(Gtk.Window):
             CCG_DOCS_DATA = os.path.join(DOCS_DIR, "Command and Conquer Generals Data")
 
             self.load_diagnostics()
-            self.write_log(self.tr("console_nonsteamgamedir") + f" {GAME_ROOT}")
-            self.write_log(self.tr("console_wineprefixdir") + f" {PREFIX_DIR}")
+            self.write_log(tr("console_nonsteamgamedir") + f" {GAME_ROOT}")
+            self.write_log(tr("console_wineprefixdir") + f" {PREFIX_DIR}")
             self.show_message_box(
-                self.tr("msgbox_success_title"),
-                self.tr("msgbox_gamedir") + f"\n{GAME_ROOT}\n\n"
-                + self.tr("msgbox_wineprefix") + f" \n{PREFIX_DIR}"
+                tr("msgbox_success_title"),
+                tr("msgbox_gamedir") + f"\n{GAME_ROOT}\n\n"
+                + tr("msgbox_wineprefix") + f" \n{PREFIX_DIR}"
             )
         else:
             prefix_dlg.destroy()
@@ -792,11 +823,11 @@ class GenPatcherGTK(Gtk.Window):
                 flags=0,
                 message_type=Gtk.MessageType.WARNING,
                 buttons=Gtk.ButtonsType.NONE,
-                text=self.tr("gentool_not_installed")
+                text=tr("gentool_not_installed")
             )
-            dialog.format_secondary_text(self.tr("gentool_dialog_text"))
-            dialog.add_button(self.tr("gentool_dialog_button_install"), Gtk.ResponseType.OK)
-            dialog.add_button(self.tr("gentool_dialog_button_cancel"), Gtk.ResponseType.CANCEL)
+            dialog.format_secondary_text(tr("gentool_dialog_text"))
+            dialog.add_button(tr("gentool_dialog_button_install"), Gtk.ResponseType.OK)
+            dialog.add_button(tr("gentool_dialog_button_cancel"), Gtk.ResponseType.CANCEL)
             
             response = dialog.run()
             dialog.destroy()
@@ -805,7 +836,7 @@ class GenPatcherGTK(Gtk.Window):
                 self.set_busy()
                 threading.Thread(target=self._patching_thread, args=(True,), daemon=True).start()
             else:
-                self.write_log(self.tr("gentool_warning"))
+                self.write_log(tr("gentool_warning"))
                 return
         else:
             self.set_busy()
@@ -819,10 +850,10 @@ class GenPatcherGTK(Gtk.Window):
 
     def patching_worker(self, install_gentool_first):
         try:
-            self.update_progress(5, self.tr("console_client"))
+            self.update_progress(5, tr("console_client"))
             
             if install_gentool_first:
-                self.update_progress(8, self.tr("console_auto_gentool"))
+                self.update_progress(8, tr("console_auto_gentool"))
                 self.copy_file_helper(os.path.join(OFFLINE_DIR, "d3d8.dll"), os.path.join(GAME_ROOT, "d3d8.dll"))
                 if self.diagnostics["ccg_detected"]:
                     self.copy_file_helper(os.path.join(OFFLINE_DIR, "d3d8.dll"), os.path.join(GENERALS_DIR, "d3d8.dll"))
@@ -831,7 +862,7 @@ class GenPatcherGTK(Gtk.Window):
                     "wine reg add 'HKCU\\Software\\Wine\\DllOverrides' /v d3d8 /t REG_SZ /d native,builtin /f"
                 )
                 subprocess.run(reg_cmd, capture_output=True, check=True)
-                self.thread_log(self.tr("console_gentool"))
+                self.thread_log(tr("console_gentool"))
             
             import urllib.request
             import re
@@ -848,13 +879,13 @@ class GenPatcherGTK(Gtk.Window):
                     match = re.search(r'href=["\'](https://cdn\.playgenerals\.online/GeneralsOnline_setup_[^"\']+\.exe)["\']', html_content)
                     if match:
                         url = match.group(1)
-                        self.thread_log(self.tr("console_installer_found") + f" {os.path.basename(url)}")
+                        self.thread_log(tr("console_installer_found") + f" {os.path.basename(url)}")
                     else:
-                        self.thread_log(self.tr("console_warning_fallback"))
+                        self.thread_log(tr("console_warning_fallback"))
             except Exception as e:
-                self.thread_log(self.tr("console_warning_network1") + f"{str(e)}" + self.tr("console_warning_network2"))
+                self.thread_log(tr("console_warning_network1") + f"{str(e)}" + tr("console_warning_network2"))
 
-            self.update_progress(20, self.tr("console_download_installer"))
+            self.update_progress(20, tr("console_download_installer"))
             installer_path = os.path.join(GAME_ROOT, "GeneralsOnline_setup.exe")
             
             req_dl = urllib.request.Request(
@@ -863,9 +894,9 @@ class GenPatcherGTK(Gtk.Window):
             )
             with urllib.request.urlopen(req_dl, timeout=30) as dl_resp, open(installer_path, "wb") as f_out:
                 f_out.write(dl_resp.read())
-            self.thread_log(self.tr("console_download_successful"))
+            self.thread_log(tr("console_download_successful"))
             
-            self.update_progress(45, self.tr("console_installing_online"))
+            self.update_progress(45, tr("console_installing_online"))
             
             exe_name = "generals.exe"
             if os.path.exists(os.path.join(GAME_ROOT, "Generals.exe")):
@@ -877,7 +908,7 @@ class GenPatcherGTK(Gtk.Window):
             inner_cmd = f"cd {shlex.quote(GAME_ROOT)} && wine GeneralsOnline_setup.exe {shlex.quote(wine_exe_param)} /DIR={shlex.quote(wine_dir_param)}"
             
             cmd = protontricks_cmd(inner_cmd)
-            self.thread_log(self.tr("console_execute_protontricks") + f" {' '.join(cmd)}")
+            self.thread_log(tr("console_execute_protontricks") + f" {' '.join(cmd)}")
             res = subprocess.run(cmd, capture_output=True, text=True)
             
             if os.path.exists(installer_path):
@@ -887,14 +918,14 @@ class GenPatcherGTK(Gtk.Window):
             alt_exe_path = os.path.join(GAME_ROOT, "GeneralsOnline.exe")
             
             if not os.path.exists(online_exe_path) and not os.path.exists(alt_exe_path):
-                self.thread_log(self.tr("console_error_GenOnline"))
+                self.thread_log(tr("console_error_GenOnline"))
                 self.thread_log(f"Installer stderr: {res.stderr}")
-                self.update_progress(0, self.tr("console_error_GenOnline_failed"))
-                GLib.idle_add(self.show_message_box, self.tr("msgbox_failed_title"),
-                              self.tr("msgbox_failed_text"))
+                self.update_progress(0, tr("console_error_GenOnline_failed"))
+                GLib.idle_add(self.show_message_box, tr("msgbox_failed_title"),
+                              tr("msgbox_failed_text"))
                 return
 
-            self.update_progress(65, self.tr("console_configuring"))
+            self.update_progress(65, tr("console_configuring"))
             
             self.copy_file_helper(os.path.join(OFFLINE_DIR, "990_DecalsZH.big"), os.path.join(GAME_ROOT, "990_DecalsZH.big"))
             self.copy_file_helper(os.path.join(OFFLINE_DIR, "BIG/Data/English/generals.csf"), os.path.join(GAME_ROOT, "Data/English/generals.csf"))
@@ -915,40 +946,40 @@ class GenPatcherGTK(Gtk.Window):
                 if os.path.exists(legacy_exe):
                     os.remove(legacy_exe)
                 os.rename(old_exe, legacy_exe)
-                self.thread_log(self.tr("console_renamed"))
+                self.thread_log(tr("console_renamed"))
             elif os.path.islink(old_exe):
                 os.remove(old_exe)
 
             if os.path.exists(online_exe_path):
                 os.symlink("GeneralsOnlineZH.exe", old_exe)
-                self.thread_log(self.tr("console_symlinkZH"))
+                self.thread_log(tr("console_symlinkZH"))
             else:
                 alt_exe_path = os.path.join(GAME_ROOT, "GeneralsOnline.exe")
                 if os.path.exists(alt_exe_path):
                     os.symlink("GeneralsOnline.exe", old_exe)
-                    self.thread_log(self.tr("console_symlink"))
+                    self.thread_log(tr("console_symlink"))
                 else:
-                    self.thread_log(self.tr("console_warning_exenotfound"))
+                    self.thread_log(tr("console_warning_exenotfound"))
 
-            self.update_progress(75, self.tr("console_installing_vc2005"))
+            self.update_progress(75, tr("console_installing_vc2005"))
             subprocess.run(
                 protontricks_cmd(f"wine {os.path.join(OFFLINE_DIR, 'vc05')} /q"),
                 capture_output=True,
             )
 
-            self.update_progress(80, self.tr("console_installing_vc2008"))
+            self.update_progress(80, tr("console_installing_vc2008"))
             subprocess.run(
                 protontricks_cmd(f"wine {os.path.join(OFFLINE_DIR, 'vc08')} /q"),
                 capture_output=True,
             )
 
-            self.update_progress(85, self.tr("console_installing_vc2010"))
+            self.update_progress(85, tr("console_installing_vc2010"))
             subprocess.run(
                 protontricks_cmd(f"wine {os.path.join(OFFLINE_DIR, 'vc10')} /q /norestart"),
                 capture_output=True,
             )
 
-            self.update_progress(95, self.tr("console_installing_directx"))
+            self.update_progress(95, tr("console_installing_directx"))
             subprocess.run(
                 protontricks_cmd(f"wine {os.path.join(OFFLINE_DIR, 'drtx_FILES/DXSETUP.exe')} /silent"),
                 capture_output=True,
@@ -962,11 +993,11 @@ class GenPatcherGTK(Gtk.Window):
             with open(ver_file, "w") as f:
                 f.write(ver_stamp)
 
-            self.update_progress(100, self.tr("console_patches_installed"))
+            self.update_progress(100, tr("console_patches_installed"))
             GLib.idle_add(self.load_diagnostics)
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_patchesonline"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_patchesonline"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     def startup_update_check(self):
         import time
@@ -995,6 +1026,7 @@ class GenPatcherGTK(Gtk.Window):
                     url = match.group(1)
                     version = match.group(2)
         except Exception:
+            version = "fail"
             pass
         return version, url
 
@@ -1020,23 +1052,34 @@ class GenPatcherGTK(Gtk.Window):
 
     def prompt_for_client_update(self, latest_version, latest_url):
         current_ver = self.get_installed_online_version()
-        dialog = Gtk.MessageDialog(
-            transient_for=self,
-            flags=0,
-            message_type=Gtk.MessageType.QUESTION,
-            buttons=Gtk.ButtonsType.YES_NO,
-            text=self.tr("update_found_title")
-        )
-        dialog.format_secondary_text(self.tr("update_found_text").format(current=current_ver, latest=latest_version))
-        response = dialog.run()
-        dialog.destroy()
-        if response == Gtk.ResponseType.YES:
-            self.set_busy()
-            threading.Thread(target=self.run_update_worker, args=(latest_url, latest_version), daemon=True).start()
-
+        if latest_version != "fail":
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                flags=0,
+                message_type=Gtk.MessageType.QUESTION,
+                buttons=Gtk.ButtonsType.YES_NO,
+                text=tr("update_found_title")
+            )
+            dialog.format_secondary_text(tr("update_found_text").format(current=current_ver, latest=latest_version))
+            response = dialog.run()
+            dialog.destroy()
+            if response == Gtk.ResponseType.YES:
+                self.set_busy()
+                threading.Thread(target=self.run_update_worker, args=(latest_url, latest_version), daemon=True).start()
+        else:
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                flags=0,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK,
+                text=tr("msgbox_network_title")
+            )
+            dialog.format_secondary_text(tr("msgbox_network_text"))
+            dialog.run()
+            dialog.destroy()
     def run_update_worker(self, url, version):
         try:
-            self.update_progress(10, self.tr("console_downloading_client"))
+            self.update_progress(10, tr("console_downloading_client"))
             installer_path = os.path.join(GAME_ROOT, "GeneralsOnline_setup.exe")
             import urllib.request
             req_dl = urllib.request.Request(
@@ -1046,7 +1089,7 @@ class GenPatcherGTK(Gtk.Window):
             with urllib.request.urlopen(req_dl, timeout=30) as dl_resp, open(installer_path, "wb") as f_out:
                 f_out.write(dl_resp.read())
                 
-            self.update_progress(50, self.tr("console_installing_clientupdate"))
+            self.update_progress(50, tr("console_installing_clientupdate"))
             exe_name = "generals.exe"
             if os.path.exists(os.path.join(GAME_ROOT, "Generals.exe")):
                 exe_name = "Generals.exe"
@@ -1063,10 +1106,10 @@ class GenPatcherGTK(Gtk.Window):
             with open(ver_file, "w") as f:
                 f.write(version)
                 
-            self.update_progress(100, self.tr("console_installed_clientupdate"))
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_online"))
+            self.update_progress(100, tr("console_installed_clientupdate"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_online"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
         finally:
             self.clear_busy()
 
@@ -1078,16 +1121,18 @@ class GenPatcherGTK(Gtk.Window):
 
     def manual_update_check_thread(self):
         try:
-            self.update_progress(10, self.tr("console_checking_client"))
+            self.update_progress(10, tr("console_checking_client"))
             latest_version, latest_url = self.scrape_latest_online_version()
             if latest_version:
                 current_version = self.get_installed_online_version()
                 if self.is_newer_version(current_version, latest_version):
                     GLib.idle_add(self.prompt_for_client_update, latest_version, latest_url)
                 else:
-                    GLib.idle_add(self.show_message_box, self.tr("no_update_title"), self.tr("no_update_text"))
+                    GLib.idle_add(self.show_message_box, tr("no_update_title"), tr("no_update_text"))
+                    self.update_progress(100, tr("no_update_text"))
             else:
-                GLib.idle_add(self.show_message_box, self.tr("msgbox_error_title"), self.tr("msgbox_error_update"))
+                GLib.idle_add(self.show_message_box, tr("msgbox_error_title"), tr("msgbox_error_update"))
+                self.update_progress(0, tr("msgbox_error_update"))
         finally:
             self.clear_busy()
 
@@ -1096,7 +1141,7 @@ class GenPatcherGTK(Gtk.Window):
             try:
                 subprocess.Popen(["xdg-open", path])
             except Exception as e:
-                self.write_log(self.tr("console_error_openfolder") + f" {str(e)}")
+                self.write_log(tr("console_error_openfolder") + f" {str(e)}")
 
     def show_message_box(self, title, text):
         dialog = Gtk.MessageDialog(
@@ -1121,25 +1166,25 @@ class GenPatcherGTK(Gtk.Window):
         page_box.set_margin_end(20)
         self.stack.add_named(page_box, "gentool")
         
-        self.gentool_title = Gtk.Label(label=self.tr("gentool_title"))
+        self.gentool_title = Gtk.Label(label=tr("gentool_title"))
         self.gentool_title.get_style_context().add_class("header-title")
         self.gentool_title.set_xalign(0)
         page_box.pack_start(self.gentool_title, False, False, 0)
         
-        self.gentool_sub = Gtk.Label(label=self.tr("gentool_subtitle"))
+        self.gentool_sub = Gtk.Label(label=tr("gentool_subtitle"))
         self.gentool_sub.get_style_context().add_class("subtitle")
         self.gentool_sub.set_xalign(0)
         self.gentool_sub.set_line_wrap(True)
         page_box.pack_start(self.gentool_sub, False, False, 2)
         
-        self.gentool_desc_lbl = Gtk.Label(label=self.tr("gentool_desc"))
+        self.gentool_desc_lbl = Gtk.Label(label=tr("gentool_desc"))
         self.gentool_desc_lbl.get_style_context().add_class("text-desc")
         self.gentool_desc_lbl.set_xalign(0)
         self.gentool_desc_lbl.set_line_wrap(True)
         self.gentool_desc_lbl.set_margin_top(20)
         page_box.pack_start(self.gentool_desc_lbl, False, False, 0)
         
-        self.btn_gentool = Gtk.Button(label=self.tr("btn_gentool"))
+        self.btn_gentool = Gtk.Button(label=tr("btn_gentool"))
         self.btn_gentool.get_style_context().add_class("btn-accent")
         self.btn_gentool.set_margin_top(35)
         self.btn_gentool.set_halign(Gtk.Align.START)
@@ -1161,20 +1206,20 @@ class GenPatcherGTK(Gtk.Window):
 
     def gentool_worker(self):
         try:
-            self.update_progress(20, self.tr("console_installing_gentool"))
+            self.update_progress(20, tr("console_installing_gentool"))
             self.copy_file_helper(os.path.join(OFFLINE_DIR, "d3d8.dll"), os.path.join(GAME_ROOT, "d3d8.dll"))
             if self.diagnostics["ccg_detected"]:
                 self.copy_file_helper(os.path.join(OFFLINE_DIR, "d3d8.dll"), os.path.join(GENERALS_DIR, "d3d8.dll"))
                 
-            self.thread_log(self.tr("console_registering_dll"))
+            self.thread_log(tr("console_registering_dll"))
             reg_cmd = protontricks_cmd(
                 "wine reg add 'HKCU\\Software\\Wine\\DllOverrides' /v d3d8 /t REG_SZ /d native,builtin /f"
             )
             subprocess.run(reg_cmd, capture_output=True, check=True)
-            self.update_progress(100, self.tr("console_installed_gentool"))
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_gentool"))
+            self.update_progress(100, tr("console_installed_gentool"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_gentool"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     # ==========================================
     # PAGE 3: ADDONS & TOOLS 
@@ -1187,12 +1232,12 @@ class GenPatcherGTK(Gtk.Window):
         page_box.set_margin_end(20)
         self.stack.add_named(page_box, "addons")
 
-        self.addons_title = Gtk.Label(label=self.tr("addons_title"))
+        self.addons_title = Gtk.Label(label=tr("addons_title"))
         self.addons_title.get_style_context().add_class("header-title")
         self.addons_title.set_xalign(0)
         page_box.pack_start(self.addons_title, False, False, 0)
 
-        self.addons_sub = Gtk.Label(label=self.tr("addons_subtitle"))
+        self.addons_sub = Gtk.Label(label=tr("addons_subtitle"))
         self.addons_sub.get_style_context().add_class("subtitle")
         self.addons_sub.set_xalign(0)
         self.addons_sub.set_line_wrap(True)
@@ -1210,19 +1255,19 @@ class GenPatcherGTK(Gtk.Window):
         self.create_controlbar_row(mods_box)
         self.create_hotkeys_row(mods_box)
         self.btn_maps = self.create_mod_row(
-            mods_box, self.tr("modbox_title_mappack"),
-            self.tr("modbox_desc_mappack"),
-            self.tr("modbox_btn_mappack"), self.install_mappacks
+            mods_box, tr("modbox_title_mappack"),
+            tr("modbox_desc_mappack"),
+            tr("modbox_btn_mappack"), self.install_mappacks
         )
         self.btn_genlauncher = self.create_mod_row(
-            mods_box, self.tr("modbox_title_genlauncher"),
-            self.tr("modbox_desc_genlauncher"),
-            self.tr("modbox_btn_genlauncher"), self.install_genlauncher
+            mods_box, tr("modbox_title_genlauncher"),
+            tr("modbox_desc_genlauncher"),
+            tr("modbox_btn_genlauncher"), self.install_genlauncher
         )
         self.btn_fonts = self.create_mod_row(
-            mods_box, self.tr("modbox_title_fontfix"),
-            self.tr("modbox_desc_fontfix"),
-            self.tr("modbox_btn_fontfix"), self.install_fonts
+            mods_box, tr("modbox_title_fontfix"),
+            tr("modbox_desc_fontfix"),
+            tr("modbox_btn_fontfix"), self.install_fonts
         )
 
     def create_mod_row(self, parent, title, desc, btn_label, callback):
@@ -1275,12 +1320,12 @@ class GenPatcherGTK(Gtk.Window):
         card.pack_start(info_col, True, True, 0)
 
         self.lbl_cb_title = Gtk.Label()
-        self.lbl_cb_title.set_markup(f"<b>{self.tr('cb_title')}</b>")
+        self.lbl_cb_title.set_markup(f"<b>{tr('cb_title')}</b>")
         self.lbl_cb_title.get_style_context().add_class("mod-title")
         self.lbl_cb_title.set_xalign(0)
         info_col.pack_start(self.lbl_cb_title, False, False, 0)
 
-        self.lbl_cb_desc = Gtk.Label(label=self.tr("cb_desc"))
+        self.lbl_cb_desc = Gtk.Label(label=tr("cb_desc"))
         self.lbl_cb_desc.get_style_context().add_class("subtitle")
         self.lbl_cb_desc.set_xalign(0)
         self.lbl_cb_desc.set_line_wrap(True)
@@ -1290,7 +1335,7 @@ class GenPatcherGTK(Gtk.Window):
         res_row.set_margin_top(4)
         info_col.pack_start(res_row, False, False, 0)
 
-        self.lbl_cb_res = Gtk.Label(label=self.tr("cb_res_label"))
+        self.lbl_cb_res = Gtk.Label(label=tr("cb_res_label"))
         self.lbl_cb_res.get_style_context().add_class("subtitle")
         res_row.pack_start(self.lbl_cb_res, False, False, 0)
 
@@ -1307,7 +1352,7 @@ class GenPatcherGTK(Gtk.Window):
         self.hud_res_combo.set_valign(Gtk.Align.CENTER)
         res_row.pack_start(self.hud_res_combo, False, False, 0)
 
-        self.btn_hud = Gtk.Button(label=self.tr("btn_hud"))
+        self.btn_hud = Gtk.Button(label=tr("btn_hud"))
         self.btn_hud.get_style_context().add_class("btn-secondary")
         self.btn_hud.set_valign(Gtk.Align.CENTER)
         self.btn_hud.connect("clicked", self.install_controlbar)
@@ -1323,12 +1368,12 @@ class GenPatcherGTK(Gtk.Window):
         card.pack_start(info_col, True, True, 0)
 
         self.lbl_hk_title = Gtk.Label()
-        self.lbl_hk_title.set_markup(f"<b>{self.tr('hk_title')}</b>")
+        self.lbl_hk_title.set_markup(f"<b>{tr('hk_title')}</b>")
         self.lbl_hk_title.get_style_context().add_class("mod-title")
         self.lbl_hk_title.set_xalign(0)
         info_col.pack_start(self.lbl_hk_title, False, False, 0)
 
-        self.lbl_hk_desc = Gtk.Label(label=self.tr("hk_desc"))
+        self.lbl_hk_desc = Gtk.Label(label=tr("hk_desc"))
         self.lbl_hk_desc.get_style_context().add_class("subtitle")
         self.lbl_hk_desc.set_xalign(0)
         self.lbl_hk_desc.set_line_wrap(True)
@@ -1338,36 +1383,36 @@ class GenPatcherGTK(Gtk.Window):
         leikeze_row.set_margin_top(6)
         info_col.pack_start(leikeze_row, False, False, 0)
 
-        self.r_leikeze = Gtk.RadioButton.new_with_label(None, self.tr("hk_leikeze"))
+        self.r_leikeze = Gtk.RadioButton.new_with_label(None, tr("hk_leikeze"))
         self.r_group = [self.r_leikeze]
         leikeze_row.pack_start(self.r_leikeze, False, False, 0)
 
-        self.lbl_hk_lang = Gtk.Label(label=self.tr("hk_lang"))
+        self.lbl_hk_lang = Gtk.Label(label=tr("hk_lang"))
         self.lbl_hk_lang.get_style_context().add_class("subtitle")
         leikeze_row.pack_start(self.lbl_hk_lang, False, False, 0)
 
         self.cb_lang = Gtk.ComboBoxText()
-        self.cb_lang.append("en", self.tr("combobox_en"))
-        self.cb_lang.append("de", self.tr("combobox_de"))
-        self.cb_lang.append("ru", self.tr("combobox_ru"))
+        self.cb_lang.append("en", tr("combobox_en"))
+        self.cb_lang.append("de", tr("combobox_de"))
+        self.cb_lang.append("ru", tr("combobox_ru"))
         self.cb_lang.set_active_id(detect_system_language({"en","de","ru"}))
         self.cb_lang.set_valign(Gtk.Align.CENTER)
         leikeze_row.pack_start(self.cb_lang, False, False, 0)
 
-        self.r_legionnaire = Gtk.RadioButton.new_with_label_from_widget(self.r_leikeze, self.tr("hk_legionnaire"))
+        self.r_legionnaire = Gtk.RadioButton.new_with_label_from_widget(self.r_leikeze, tr("hk_legionnaire"))
         info_col.pack_start(self.r_legionnaire, False, False, 0)
 
-        self.r_default = Gtk.RadioButton.new_with_label_from_widget(self.r_leikeze, self.tr("hk_default"))
+        self.r_default = Gtk.RadioButton.new_with_label_from_widget(self.r_leikeze, tr("hk_default"))
         info_col.pack_start(self.r_default, False, False, 0)
 
-        self.cb_show_visual = Gtk.CheckButton.new_with_label(self.tr("hk_visual"))
+        self.cb_show_visual = Gtk.CheckButton.new_with_label(tr("hk_visual"))
         self.cb_show_visual.get_style_context().add_class("text-desc")
         self.cb_show_visual.get_child().set_line_wrap(True)
         self.cb_show_visual.set_active(True)
         self.cb_show_visual.set_margin_top(4)
         info_col.pack_start(self.cb_show_visual, False, False, 0)
 
-        self.btn_hotkeys = Gtk.Button(label=self.tr("btn_hk"))
+        self.btn_hotkeys = Gtk.Button(label=tr("btn_hk"))
         self.btn_hotkeys.get_style_context().add_class("btn-secondary")
         self.btn_hotkeys.set_valign(Gtk.Align.START)
         self.btn_hotkeys.set_margin_top(4)
@@ -1392,12 +1437,12 @@ class GenPatcherGTK(Gtk.Window):
 
     def genlauncher_worker(self):
         try:
-            self.update_progress(20, self.tr("console_installing_genlauncher"))
+            self.update_progress(20, tr("console_installing_genlauncher"))
             self.copy_file_helper(os.path.join(OFFLINE_DIR, "GenLauncher.exe"), os.path.join(GAME_ROOT, "GenLauncher.exe"))
-            self.update_progress(100, self.tr("console_installed_genlauncher"))
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_genlauncher"))
+            self.update_progress(100, tr("console_installed_genlauncher"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_genlauncher"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     def install_controlbar(self, button):
         self.run_worker_thread(self.controlbar_worker)
@@ -1450,24 +1495,24 @@ class GenPatcherGTK(Gtk.Window):
             if os.path.exists(path):
                 try:
                     os.remove(path)
-                    self.thread_log(self.tr("console_removed_loose") + f" {f}")
+                    self.thread_log(tr("console_removed_loose") + f" {f}")
                 except Exception as e:
-                    self.thread_log(self.tr("console_warning_loose") + f" {f} {str(e)}")
+                    self.thread_log(tr("console_warning_loose") + f" {f} {str(e)}")
 
     def controlbar_worker(self):
         try:
-            self.update_progress(5, self.tr("console_cleanup_controlbarfiles"))
+            self.update_progress(5, tr("console_cleanup_controlbarfiles"))
             
             for f in os.listdir(GAME_ROOT):
                 if f.startswith("340_ControlBarPro") and f.endswith(".big"):
                     try:
                         os.remove(os.path.join(GAME_ROOT, f))
-                        self.thread_log(self.tr("console_removed") + f" {f}")
+                        self.thread_log(tr("console_removed") + f" {f}")
                     except:
                         pass
             self.clean_loose_hud_files()
 
-            self.update_progress(15, self.tr("console_resolution_reading"))
+            self.update_progress(15, tr("console_resolution_reading"))
             res_str = self.hud_res_combo.get_active_id() or "1920 1080"
 
             url_map = {
@@ -1489,10 +1534,10 @@ class GenPatcherGTK(Gtk.Window):
             if not download_url:
                 download_url = url_map["1920 1080"]
                 matched_res = "1920 1080"
-                self.thread_log(self.tr("console_resolution_fallback"))
+                self.thread_log(tr("console_resolution_fallback"))
 
-            self.thread_log(self.tr("console_resolution_matched1") + f" {matched_res}" + self.tr("console_resolution_matched2"))
-            self.update_progress(30, self.tr("console_controlbar_downloading") + f"{matched_res.replace(' ', 'x')})...")
+            self.thread_log(tr("console_resolution_matched1") + f" {matched_res}" + tr("console_resolution_matched2"))
+            self.update_progress(30, tr("console_controlbar_downloading") + f"{matched_res.replace(' ', 'x')})...")
 
             zip_path = os.path.join(GAME_ROOT, "_cbpr_download.zip")
             result = subprocess.run(
@@ -1500,11 +1545,11 @@ class GenPatcherGTK(Gtk.Window):
                 capture_output=True
             )
             if result.returncode != 0 or not os.path.exists(zip_path) or os.path.getsize(zip_path) < 1024:
-                self.update_progress(0, self.tr("console_controlbar_error_dl"))
+                self.update_progress(0, tr("console_controlbar_error_dl"))
                 return
 
-            self.thread_log(self.tr("console_download_complete"))
-            self.update_progress(70, self.tr("console_controlbar_extracting"))
+            self.thread_log(tr("console_download_complete"))
+            self.update_progress(70, tr("console_controlbar_extracting"))
 
             extract_result = subprocess.run(
                 ["unzip", "-o", zip_path, "-d", GAME_ROOT],
@@ -1513,40 +1558,40 @@ class GenPatcherGTK(Gtk.Window):
             os.remove(zip_path)
 
             if extract_result.returncode != 0:
-                self.thread_log(self.tr("console_warning") + f" unzip stderr: {extract_result.stderr.strip()}")
-                self.update_progress(0, self.tr("console_controlbar_error_ex"))
+                self.thread_log(tr("console_warning") + f" unzip stderr: {extract_result.stderr.strip()}")
+                self.update_progress(0, tr("console_controlbar_error_ex"))
                 return
 
-            self.thread_log()
-            self.update_progress(100, self.tr("console_controlbar_extracted"))
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_controlbar1") + f"{matched_res.replace(' ', 'x')}" + self.tr("msgbox_success_text_controlbar2"))
+            self.thread_log(tr("console_controlbar_extracted"))
+            self.update_progress(100, tr("console_controlbar_installed"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_controlbar1") + f"{matched_res.replace(' ', 'x')}" + tr("msgbox_success_text_controlbar2"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     def install_mappacks(self, button):
         self.run_worker_thread(self.mappacks_worker)
 
     def mappacks_worker(self):
         try:
-            self.update_progress(10, self.tr("console_maps_extracting"))
+            self.update_progress(10, tr("console_maps_extracting"))
             map_archives = ["maod", "mmis", "mscr", "mskr"]
             for idx, arch in enumerate(map_archives):
                 pct = 15 + idx * 20
                 arch_path = os.path.join(OFFLINE_DIR, arch)
                 if os.path.exists(arch_path):
-                    self.update_progress(pct, self.tr("console_pack_extracting") + f" {arch}...")
+                    self.update_progress(pct, tr("console_pack_extracting") + f" {arch}...")
                     self.extract_map_pack_worker(arch_path)
-            self.update_progress(100, self.tr("console_maps_extracted"))
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_maps"))
+            self.update_progress(100, tr("console_maps_extracted"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_maps"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     def install_fonts(self, button):
         self.run_worker_thread(self.fonts_worker)
 
     def fonts_worker(self):
         try:
-            self.update_progress(20, self.tr("console_fontfix_extracting"))
+            self.update_progress(20, tr("console_fontfix_extracting"))
             temp_font_dir = "/tmp/gena_extract"
             if os.path.exists(temp_font_dir):
                 shutil.rmtree(temp_font_dir)
@@ -1559,10 +1604,10 @@ class GenPatcherGTK(Gtk.Window):
                     
             if os.path.exists(temp_font_dir):
                 shutil.rmtree(temp_font_dir)
-            self.update_progress(100, self.tr("console_fontfix_extracted"))
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_fontfix"))
+            self.update_progress(100, tr("console_fontfix_extracted"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_fontfix"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     def apply_hotkeys(self, button):
         if self.r_default.get_active():
@@ -1579,7 +1624,7 @@ class GenPatcherGTK(Gtk.Window):
 
     def hotkeys_worker(self, profile, lang, show_visual):
         try:
-            self.update_progress(20, self.tr("console_hk_applying"))
+            self.update_progress(20, tr("console_hk_applying"))
             lang_map = {
                 "English": "BIG EN",
                 "German": "BIG DE",
@@ -1589,14 +1634,14 @@ class GenPatcherGTK(Gtk.Window):
             diag = self.diagnostics
             
             if profile == "default":
-                self.update_progress(45, self.tr("console_hk_default"))
+                self.update_progress(45, tr("console_hk_default"))
                 default_csf = os.path.join(OFFLINE_DIR, "BIG/Data/English/generals.csf")
                 self.copy_file_helper(default_csf, os.path.join(GAME_ROOT, "Data/English/generals.csf"))
                 if diag["ccg_detected"]:
                     self.copy_file_helper(default_csf, os.path.join(GENERALS_DIR, "Data/English/generals.csf"))
                     
             elif profile == "leikeze":
-                self.update_progress(45, self.tr("console_hk_lekeize") + f"{lang})...")
+                self.update_progress(45, tr("console_hk_lekeize") + f"{lang})...")
                 zh_src = os.path.join(OFFLINE_DIR, f"hlei_FILES/ZH/{lang_folder}/Data/English/generals.csf")
                 if os.path.exists(zh_src):
                     self.copy_file_helper(zh_src, os.path.join(GAME_ROOT, "Data/English/generals.csf"))
@@ -1606,7 +1651,7 @@ class GenPatcherGTK(Gtk.Window):
                         self.copy_file_helper(ccg_src, os.path.join(GENERALS_DIR, "Data/English/generals.csf"))
                         
             elif profile == "legionnaire":
-                self.update_progress(45, self.tr("console_hk_legionnaire"))
+                self.update_progress(45, tr("console_hk_legionnaire"))
                 temp_dir = "/tmp/hleg_extract"
                 if os.path.exists(temp_dir):
                     shutil.rmtree(temp_dir)
@@ -1622,19 +1667,19 @@ class GenPatcherGTK(Gtk.Window):
                     shutil.rmtree(temp_dir)
 
             if show_visual:
-                self.update_progress(80, self.tr("console_cbhk_applying"))
+                self.update_progress(80, tr("console_cbhk_applying"))
                 self.install_visual_hotkeys(diag)
             else:
-                self.update_progress(80, self.tr("console_cbhk_removing"))
+                self.update_progress(80, tr("console_cbhk_removing"))
                 self.remove_visual_hotkeys(diag)
                     
-            self.update_progress(100, self.tr("console_cbhk_applied"))
-            GLib.idle_add(self.show_message_box, self.tr("msgbox_success_title"), self.tr("msgbox_success_text_hk"))
+            self.update_progress(100, tr("console_cbhk_applied"))
+            GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_hk"))
         except Exception as e:
-            self.update_progress(0, self.tr("console_error") + f" {str(e)}")
+            self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     def install_visual_hotkeys(self, diag):
-        self.thread_log(self.tr("console_vishk_installing"))
+        self.thread_log(tr("console_vishk_installing"))
         
         temp_dir = "/tmp/genpatcher_gtk_hlen_extract"
         if os.path.exists(temp_dir):
@@ -1643,7 +1688,7 @@ class GenPatcherGTK(Gtk.Window):
         
         src_hlen = os.path.join(OFFLINE_DIR, "hlen_FILES")
         if not os.path.exists(src_hlen):
-            self.thread_log(self.tr("console_vishk_hlen"))
+            self.thread_log(tr("console_vishk_hlen"))
             return
             
         shutil.copytree(src_hlen, os.path.join(temp_dir, "hlen_FILES"))
@@ -1661,28 +1706,28 @@ class GenPatcherGTK(Gtk.Window):
                     if res.returncode == 0:
                         os.remove(src_path)
                     else:
-                        self.thread_log(self.tr("console_vishk_failed1") + f" {f} " + self.tr("console_vishk_failed2"))
+                        self.thread_log(tr("console_vishk_failed1") + f" {f} " + tr("console_vishk_failed2"))
                         
         zh_src = os.path.join(temp_dir, "hlen_FILES/ZH/BIG")
         if os.path.exists(zh_src):
             self.copy_recursive_helper(zh_src, GAME_ROOT)
-            self.thread_log(self.tr("console_vishk_applied"))
+            self.thread_log(tr("console_vishk_applied"))
         else:
-            self.thread_log(self.tr("console_vishk_big"))
+            self.thread_log(tr("console_vishk_big"))
             
         if diag["ccg_detected"]:
             ccg_src = os.path.join(temp_dir, "hlen_FILES/CCG/BIG")
             if os.path.exists(ccg_src):
                 self.copy_recursive_helper(ccg_src, GENERALS_DIR)
-                self.thread_log(self.tr("console_vishk_ccg"))
+                self.thread_log(tr("console_vishk_ccg"))
             else:
-                self.thread_log(self.tr("console_vishk_big"))
+                self.thread_log(tr("console_vishk_big"))
                 
         if os.path.exists(temp_dir):
             shutil.rmtree(temp_dir)
 
     def remove_visual_hotkeys(self, diag):
-        self.thread_log(self.tr("console_vishk_removing"))
+        self.thread_log(tr("console_vishk_removing"))
         zh_files = [
             "Data/INI/CommandButton.ini",
             "Data/INI/MappedImages/TextureSize_512/SAUserInterface512.INI",
@@ -1706,7 +1751,7 @@ class GenPatcherGTK(Gtk.Window):
             path = os.path.join(GAME_ROOT, f)
             if os.path.exists(path):
                 os.remove(path)
-                self.thread_log(self.tr("console_vishk_removedzh") + f" {f}")
+                self.thread_log(tr("console_vishk_removedzh") + f" {f}")
                 
         if diag["ccg_detected"]:
             ccg_files = [
@@ -1724,7 +1769,7 @@ class GenPatcherGTK(Gtk.Window):
                 path = os.path.join(GENERALS_DIR, f)
                 if os.path.exists(path):
                     os.remove(path)
-                    self.thread_log(self.tr("console_vishk_removedccg") + f" {f}")
+                    self.thread_log(tr("console_vishk_removedccg") + f" {f}")
 
     # PAGE 4: ABOUT / INFO
     def build_about_page(self):
@@ -1735,12 +1780,12 @@ class GenPatcherGTK(Gtk.Window):
         page_box.set_margin_end(20)
         self.stack.add_named(page_box, "about")
         
-        self.about_title = Gtk.Label(label=self.tr("about_title"))
+        self.about_title = Gtk.Label(label=tr("about_title"))
         self.about_title.get_style_context().add_class("header-title")
         self.about_title.set_xalign(0)
         page_box.pack_start(self.about_title, False, False, 0)
         
-        self.about_sub = Gtk.Label(label=self.tr("about_subtitle"))
+        self.about_sub = Gtk.Label(label=tr("about_subtitle"))
         self.about_sub.get_style_context().add_class("subtitle")
         self.about_sub.set_xalign(0)
         self.about_sub.set_line_wrap(True)
@@ -1751,19 +1796,21 @@ class GenPatcherGTK(Gtk.Window):
         info_box.set_margin_top(15)
         page_box.pack_start(info_box, False, False, 0)
         
-        self.about_desc_lbl = Gtk.Label(label=self.tr("about_desc"))
+        self.about_desc_lbl = Gtk.Label(label=tr("about_desc"))
         self.about_desc_lbl.get_style_context().add_class("text-desc")
         self.about_desc_lbl.set_xalign(0)
         self.about_desc_lbl.set_line_wrap(True)
+        self.about_desc_lbl.connect("activate-link", self.on_about_link_activated)
+        self.set_about_description(tr("about_desc"))
         info_box.pack_start(self.about_desc_lbl, False, False, 0)
         
         self.btn_github = Gtk.Button()
         self.btn_github.get_style_context().add_class("btn-secondary")
-        self.btn_github.connect("clicked", lambda b: subprocess.Popen(["xdg-open", "https://github.com/ZeNx98/GenPatcher-Linux"]))
+        self.btn_github.connect("clicked", lambda b: subprocess.Popen(["xdg-open", "https://github.com/Fennek88/GenPatcher-Linux"]))
         box_github = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         box_github.set_halign(Gtk.Align.CENTER)
         img_github = Gtk.Image.new_from_icon_name("go-home-symbolic", Gtk.IconSize.BUTTON)
-        self.lbl_github = Gtk.Label(label=self.tr("btn_github"))
+        self.lbl_github = Gtk.Label(label=tr("btn_github"))
         box_github.pack_start(img_github, False, False, 0)
         box_github.pack_start(self.lbl_github, False, False, 0)
         self.btn_github.add(box_github)
@@ -1774,7 +1821,7 @@ class GenPatcherGTK(Gtk.Window):
         box_go = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         box_go.set_halign(Gtk.Align.CENTER)
         img_go = Gtk.Image.new_from_icon_name("applications-internet-symbolic", Gtk.IconSize.BUTTON)
-        self.lbl_go = Gtk.Label(label=self.tr("btn_generals_online"))
+        self.lbl_go = Gtk.Label(label=tr("btn_generals_online"))
         box_go.pack_start(img_go, False, False, 0)
         box_go.pack_start(self.lbl_go, False, False, 0)
         self.btn_go.add(box_go)
@@ -1785,7 +1832,7 @@ class GenPatcherGTK(Gtk.Window):
         box_gt = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         box_gt.set_halign(Gtk.Align.CENTER)
         img_gt = Gtk.Image.new_from_icon_name("system-run-symbolic", Gtk.IconSize.BUTTON)
-        self.lbl_gt = Gtk.Label(label=self.tr("btn_gentool_page"))
+        self.lbl_gt = Gtk.Label(label=tr("btn_gentool_page"))
         box_gt.pack_start(img_gt, False, False, 0)
         box_gt.pack_start(self.lbl_gt, False, False, 0)
         self.btn_gt.add(box_gt)
@@ -1796,7 +1843,7 @@ class GenPatcherGTK(Gtk.Window):
         box_gp = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         box_gp.set_halign(Gtk.Align.CENTER)
         img_gp = Gtk.Image.new_from_icon_name("help-about-symbolic", Gtk.IconSize.BUTTON)
-        self.lbl_gp = Gtk.Label(label=self.tr("btn_genpatcher_page"))
+        self.lbl_gp = Gtk.Label(label=tr("btn_genpatcher_page"))
         box_gp.pack_start(img_gp, False, False, 0)
         box_gp.pack_start(self.lbl_gp, False, False, 0)
         self.btn_gp.add(box_gp)
@@ -1815,6 +1862,27 @@ class GenPatcherGTK(Gtk.Window):
         if active_id:
             CURRENT_LANG = active_id
             self.update_gui_texts()
+
+    def set_about_description(self, text):
+        parts = []
+        last_end = 0
+        for match in re.finditer(r"https?://[^\s]+", text):
+            url = match.group(0)
+            parts.append(GLib.markup_escape_text(text[last_end:match.start()]))
+            escaped_url = GLib.markup_escape_text(url)
+            escaped_href = html.escape(url, quote=True)
+            parts.append(f'<a href="{escaped_href}">{escaped_url}</a>')
+            last_end = match.end()
+        parts.append(GLib.markup_escape_text(text[last_end:]))
+        self.about_desc_lbl.set_markup("".join(parts))
+
+    def on_about_link_activated(self, label, uri):
+        subprocess.Popen(["xdg-open", uri])
+        return True
+
+    def on_protontricks_backend_changed(self, combo):
+        global protontricks_selected_backend
+        protontricks_selected_backend = combo.get_active_id()
 
     def update_gui_texts(self):
         is_rtl = CURRENT_LANG == "ar"
@@ -1854,47 +1922,47 @@ class GenPatcherGTK(Gtk.Window):
             self.lang_lbl.set_halign(Gtk.Align.START)
             self.lang_lbl.set_xalign(0)
 
-        self.ver_lbl.set_text(self.tr("ver_label"))
-        self.lang_lbl.set_text(self.tr("lang_label"))
+        self.ver_lbl.set_text(tr("ver_label"))
+        self.lang_lbl.set_text(tr("lang_label"))
 
-        self.nav_btns["fixes"].set_label(self.tr("apply_fixes"))
-        self.nav_btns["gentool"].set_label(self.tr("gentool"))
-        self.nav_btns["addons"].set_label(self.tr("addons"))
-        self.nav_btns["about"].set_label(self.tr("about"))
+        self.nav_btns["fixes"].set_label(tr("apply_fixes"))
+        self.nav_btns["gentool"].set_label(tr("gentool"))
+        self.nav_btns["addons"].set_label(tr("addons"))
+        self.nav_btns["about"].set_label(tr("about"))
 
-        self.fixes_title.set_text(self.tr("fixes_title"))
-        self.fixes_sub.set_text(self.tr("fixes_subtitle"))
-        self.btn_locate.set_label(self.tr("btn_locate"))
-        self.btn_open_game.set_label(self.tr("btn_open"))
-        self.btn_open_prefix.set_label(self.tr("btn_open"))
-        self.btn_install_protontricks.set_label(self.tr("btn_install"))
-        self.btn_check_update.set_label(self.tr("btn_check_update"))
+        self.fixes_title.set_text(tr("fixes_title"))
+        self.fixes_sub.set_text(tr("fixes_subtitle"))
+        self.btn_locate.set_label(tr("btn_locate"))
+        self.btn_open_game.set_label(tr("btn_open"))
+        self.btn_open_prefix.set_label(tr("btn_open"))
+        self.btn_install_protontricks.set_label(tr("btn_install"))
+        self.btn_check_update.set_label(tr("btn_check_update"))
         self.console_view.get_buffer().set_text("")
-        self.write_log(self.tr("console_welcome"))
+        self.write_log(tr("console_welcome"))
         self.load_diagnostics()
 
-        self.gentool_title.set_text(self.tr("gentool_title"))
-        self.gentool_sub.set_text(self.tr("gentool_subtitle"))
-        self.gentool_desc_lbl.set_text(self.tr("gentool_desc"))
+        self.gentool_title.set_text(tr("gentool_title"))
+        self.gentool_sub.set_text(tr("gentool_subtitle"))
+        self.gentool_desc_lbl.set_text(tr("gentool_desc"))
 
-        self.addons_title.set_text(self.tr("addons_title"))
-        self.addons_sub.set_text(self.tr("addons_subtitle"))
-        self.lbl_cb_title.set_markup(f"<b>{self.tr('cb_title')}</b>")
-        self.lbl_cb_desc.set_text(self.tr("cb_desc"))
-        self.lbl_cb_res.set_text(self.tr("cb_res_label"))
+        self.addons_title.set_text(tr("addons_title"))
+        self.addons_sub.set_text(tr("addons_subtitle"))
+        self.lbl_cb_title.set_markup(f"<b>{tr('cb_title')}</b>")
+        self.lbl_cb_desc.set_text(tr("cb_desc"))
+        self.lbl_cb_res.set_text(tr("cb_res_label"))
 
-        self.lbl_hk_title.set_markup(f"<b>{self.tr('hk_title')}</b>")
-        self.lbl_hk_desc.set_text(self.tr("hk_desc"))
-        self.r_leikeze.set_label(self.tr("hk_leikeze"))
-        self.lbl_hk_lang.set_text(self.tr("hk_lang"))
-        self.r_legionnaire.set_label(self.tr("hk_legionnaire"))
-        self.r_default.set_label(self.tr("hk_default"))
-        self.cb_show_visual.set_label(self.tr("hk_visual"))
+        self.lbl_hk_title.set_markup(f"<b>{tr('hk_title')}</b>")
+        self.lbl_hk_desc.set_text(tr("hk_desc"))
+        self.r_leikeze.set_label(tr("hk_leikeze"))
+        self.lbl_hk_lang.set_text(tr("hk_lang"))
+        self.r_legionnaire.set_label(tr("hk_legionnaire"))
+        self.r_default.set_label(tr("hk_default"))
+        self.cb_show_visual.set_label(tr("hk_visual"))
         
         self.cb_lang.remove_all()
-        self.cb_lang.append_text(self.tr("combobox_en"))
-        self.cb_lang.append_text(self.tr("combobox_de"))
-        self.cb_lang.append_text(self.tr("combobox_ru"))
+        self.cb_lang.append_text(tr("combobox_en"))
+        self.cb_lang.append_text(tr("combobox_de"))
+        self.cb_lang.append_text(tr("combobox_ru"))
         lang=detect_system_language({"en","de","ru"})
         match lang:
             case "en":
@@ -1914,23 +1982,23 @@ class GenPatcherGTK(Gtk.Window):
             if child:
                 child.set_xalign(_xalign)
 
-        self.lbl_maps_title.set_markup(f"<b>{self.tr('maps_title')}</b>")
-        self.lbl_maps_desc.set_text(self.tr("maps_desc"))
+        self.lbl_maps_title.set_markup(f"<b>{tr('maps_title')}</b>")
+        self.lbl_maps_desc.set_text(tr("maps_desc"))
 
-        self.lbl_gl_title.set_markup(f"<b>{self.tr('gl_title')}</b>")
-        self.lbl_gl_desc.set_text(self.tr("gl_desc"))
+        self.lbl_gl_title.set_markup(f"<b>{tr('gl_title')}</b>")
+        self.lbl_gl_desc.set_text(tr("gl_desc"))
 
-        self.lbl_font_title.set_markup(f"<b>{self.tr('font_title')}</b>")
-        self.lbl_font_desc.set_text(self.tr("font_desc"))
+        self.lbl_font_title.set_markup(f"<b>{tr('font_title')}</b>")
+        self.lbl_font_desc.set_text(tr("font_desc"))
 
 
-        self.about_title.set_text(self.tr("about_title"))
-        self.about_sub.set_text(self.tr("about_subtitle"))
-        self.about_desc_lbl.set_text(self.tr("about_desc"))
-        self.lbl_github.set_text(self.tr("btn_github"))
-        self.lbl_go.set_text(self.tr("btn_generals_online"))
-        self.lbl_gt.set_text(self.tr("btn_gentool_page"))
-        self.lbl_gp.set_text(self.tr("btn_genpatcher_page"))
+        self.about_title.set_text(tr("about_title"))
+        self.about_sub.set_text(tr("about_subtitle"))
+        self.set_about_description(tr("about_desc"))
+        self.lbl_github.set_text(tr("btn_github"))
+        self.lbl_go.set_text(tr("btn_generals_online"))
+        self.lbl_gt.set_text(tr("btn_gentool_page"))
+        self.lbl_gp.set_text(tr("btn_genpatcher_page"))
 
     def set_direction_recursive(self, widget, direction):
         widget.set_direction(direction)
@@ -1985,6 +2053,7 @@ def check_paths():
         "game_detected": os.path.exists(GAME_ROOT) if GAME_ROOT else False,
         "prefix_detected": os.path.exists(PREFIX_DIR) if PREFIX_DIR else False,
         "protontricks_backend": detect_protontricks(),
+        "protontricks_backends": protontricks_backends,
         "offline_files_detected": os.path.exists(OFFLINE_DIR),
         "game_path": GAME_ROOT,
         "prefix_path": PREFIX_DIR,

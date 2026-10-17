@@ -16,6 +16,7 @@ TRANSLATIONS = {
         "prefix_missing": "<b>✗ Proton Wine prefix database:</b> <span foreground='#ef4444'>MISSING</span>",
         "protontricks_legacy": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>LEGACY</span>",
         "protontricks_flatpak": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>FLATPAK</span>",
+        "protontricks_both": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>LEGACY + FLATPAK</span>",
         "protontricks_missing": "<b>✗ Protontricks:</b> <span foreground='#ef4444'>MISSING</span>",
         "protontricks_notfound": "protontricks was not found. Install the native package or Flatpak",
         "offline_found": "<b>✓ Offline Patch installer assets:</b> <span foreground='#4d9de0'>FOUND</span>",
@@ -76,6 +77,7 @@ TRANSLATIONS = {
         "console_download_complete": "Extracting ControlBarPro files to game folder...",
         "console_controlbar_error_ex": "Error: Failed to extract ControlBarPro zip.",
         "console_controlbar_extracted": "✓ ControlBarPro files extracted to game folder.",
+        "console_controlbar_installed": "✓ Control Bar Pro HUD installed successfully!",
         "console_maps_extracting": "Extracting community maps...",
         "console_pack_extracting": "Extracting map package:",
         "console_maps_extracted": "✓ All Map Packs extracted successfully!",
@@ -134,6 +136,8 @@ TRANSLATIONS = {
         "msgbox_wine_title": "Invalid Prefix",
         "msgbox_wine_text1": f"The selected folder does not look like a Wine prefix.\n\nExpected to find a 'drive_c' subfolder inside:",
         "msgbox_wine_text2": "Please try again and select the correct folder.",
+        "msgbox_network_title": "No connection",
+        "msgbox_network_text": "Warning: Could not reach playgenerals.online to check for new version.\nCheck your network connection or try again later.",
         
         "filefilter_gameexe": "Game Executable",
         "filefilter_all": "All Files",
@@ -230,7 +234,7 @@ TRANSLATIONS = {
         
         "about_title": "ABOUT GENPATCHER",
         "about_subtitle": "Information and credits regarding this project",
-        "about_desc": "GenPatcher Linux is an open-source utility designed to configure, patch, and optimize Command & Conquer: Generals and Zero Hour for Wine and Proton environments. It automates prefix setup, registry DLL overrides, resolution matching, and mod deployment natively on Linux distributions.\n\nProject Home: https://github.com/ZeNx98/GenPatcher-Linux\nDeveloper: ZeNx98, Fennek88 (german localization, support for Flatpak Protontricks)\n\nSpecial Thanks:\n• Legionnaire (Original creator of GenPatcher for Windows, who compiled the stability fixes and community assets)\n• Generals Online and C&C Online Community Teams\n\nDisclaimer: This project is distributed in the hope that it will be useful, but without any warranty. Running these modifications is at your own risk."
+        "about_desc": "GenPatcher Linux is an open-source utility designed to configure, patch, and optimize Command & Conquer: Generals and Zero Hour for Wine and Proton environments. It automates prefix setup, registry DLL overrides, resolution matching, and mod deployment natively on Linux distributions.\n\nProject Home:\nhttps://github.com/ZeNx98/GenPatcher-Linux\nhttps://github.com/Fennek88/GenPatcher-Linux\n\nDevelopers: ZeNx98, Fennek88 (german localization, support for Flatpak Protontricks)\n\nSpecial Thanks:\n• Legionnaire (Original creator of GenPatcher for Windows, who compiled the stability fixes and community assets)\n• Generals Online and C&C Online Community Teams\n\nDisclaimer: This project is distributed in the hope that it will be useful, but without any warranty. Running these modifications is at your own risk."
     },
         "de": {
         "apply_fixes": "Optimierungen anwenden",
@@ -249,6 +253,7 @@ TRANSLATIONS = {
         "prefix_missing": "<b>✗ Proton Wine prefix Datenbank:</b> <span foreground='#ef4444'>FEHLT</span>",
         "protontricks_legacy": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>LEGACY</span>",
         "protontricks_flatpak": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>FLATPAK</span>",
+        "protontricks_both": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>LEGACY + FLATPAK</span>",
         "protontricks_missing": "<b>✗ Protontricks:</b> <span foreground='#ef4444'>FEHLT</span>",
         "protontricks_notfound": "Protontricks wurde nicht gefunden. Installieren Sie das native Paket oder Flatpak",
         "offline_found": "<b>✓ Offline Patch Installer Assets:</b> <span foreground='#4d9de0'>GEFUNDEN</span>",
@@ -309,6 +314,7 @@ TRANSLATIONS = {
         "console_download_complete": "Extrahiere ControlBarPro-Dateien in den Spielordner...",
         "console_controlbar_error_ex": "Fehler: Entpacken von ControlBarPro zip fehlgeschlagen.",
         "console_controlbar_extracted": "✓ ControlBarPro-Dateien in den Spielordner entpackt.",
+        "console_controlbar_installed": "✓ Control Bar Pro HUD erfolgreich installiert!",
         "console_maps_extracting": "Community-Maps werden entpackt...",
         "console_pack_extracting": "Map-Paket wird entpackt:",
         "console_maps_extracted": "✓ Alle Map Packs erfolgreich entpackt!",
@@ -367,6 +373,8 @@ TRANSLATIONS = {
         "msgbox_wine_title": "Ungültiges Prefix",
         "msgbox_wine_text1": f"Der ausgewählte Ordner scheint kein Wine-Prefix zu sein.\n\nIm Ordner wurde kein Unterordner 'drive_c' gefunden:",
         "msgbox_wine_text2": "Bitte versuchen Sie es erneut und wählen Sie den richtigen Ordner aus.",
+        "msgbox_network_title": "Keine Verbindung",
+        "msgbox_network_text": "Warnung: playgenerals.online konnte nicht erreicht werden, um nach einer neuen Version zu suchen.\nÜberprüfen Sie Ihre Netzwerkverbindung oder versuchen Sie es später erneut.",
 
         "filefilter_gameexe": "Spielprogramm",
         "filefilter_all": "Alle Dateien",
@@ -463,7 +471,7 @@ TRANSLATIONS = {
 
         "about_title": "ÜBER GENPATCHER",
         "about_subtitle": "Informationen und Danksagungen zu diesem Projekt",
-        "about_desc": "GenPatcher Linux ist ein Open-Source-Tool zum Einrichten, Patching und Optimieren von Command & Conquer: Generals und Zero Hour für Wine- und Proton-Umgebungen. Es automatisiert die Einrichtung von Prefixen, DLL-Overrides in der Registry, Auflösungsabgleich und Mod-Installation nativ auf Linux-Distributionen.\n\nProjekt-Homepage: https://github.com/ZeNx98/GenPatcher-Linux\nEntwickler: ZeNx98, Fennek88 (deutsche Lokalisierung, Unterstützung für Flatpak Protontricks)\n\nBesonderer Dank an:\n• Legionnaire (Originaler Ersteller von GenPatcher für Windows, der die Stabilitätsfixes und Community-Assets zusammengestellt hat)\n• Generals Online und C&C Online Community Teams\n\nHinweis: Dieses Projekt wird in der Hoffnung verteilt, dass es nützlich ist, aber ohne Gewährleistung. Die Ausführung dieser Modifikationen erfolgt auf eigenes Risiko."
+        "about_desc": "GenPatcher Linux ist ein Open-Source-Tool zum Einrichten, Patching und Optimieren von Command & Conquer: Generals und Zero Hour für Wine- und Proton-Umgebungen. Es automatisiert die Einrichtung von Prefixen, DLL-Overrides in der Registry, Auflösungsabgleich und Mod-Installation nativ auf Linux-Distributionen.\n\nProjekt-Homepage:\nhttps://github.com/ZeNx98/GenPatcher-Linux\nhttps://github.com/Fennek88/GenPatcher-Linux\n\nEntwickler: ZeNx98, Fennek88 (deutsche Lokalisierung, Unterstützung für Flatpak Protontricks)\n\nBesonderer Dank an:\n• Legionnaire (Originaler Ersteller von GenPatcher für Windows, der die Stabilitätsfixes und Community-Assets zusammengestellt hat)\n• Generals Online und C&C Online Community Teams\n\nHinweis: Dieses Projekt wird in der Hoffnung verteilt, dass es nützlich ist, aber ohne Gewährleistung. Die Ausführung dieser Modifikationen erfolgt auf eigenes Risiko."
     },
         "ar": {
         "apply_fixes": "تطبيق الإصلاحات",
@@ -482,6 +490,7 @@ TRANSLATIONS = {
         "prefix_missing": "<b>✗ قاعدة بيانات المستودع Proton Wine:</b> <span foreground='#ef4444'>مفقودة</span>",
         "protontricks_legacy": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>LEGACY</span>",
         "protontricks_flatpak": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>FLATPAK</span>",
+        "protontricks_both": "<b>✓ Protontricks:</b> <span foreground='#4d9de0'>LEGACY + FLATPAK</span>",
         "protontricks_missing": "<b>✗ Protontricks:</b> <span foreground='#ef4444'>مفقود</span>",
         "protontricks_notfound": "لم يتم العثور على protontricks. ثبّت الحزمة الأصلية أو Flatpak ",
         "offline_found": "<b>✓ ملفات التثبيت غير المتصلة بالإنترنت:</b> <span foreground='#4d9de0'>تم العثور عليها</span>",
@@ -542,6 +551,7 @@ TRANSLATIONS = {
         "console_download_complete": "جارٍ استخراج ملفات ControlBarPro إلى مجلد اللعبة...",
         "console_controlbar_error_ex": "خطأ: فشل استخراج ملف ControlBarPro.zip.",
         "console_controlbar_extracted": "✓ تم استخراج ملفات ControlBarPro إلى مجلد اللعبة.",
+        "console_controlbar_installed": "✓ تم تثبيت واجهة Control Bar Pro HUD بنجاح!",
         "console_maps_extracting": "جارٍ استخراج خرائط المجتمع...",
         "console_pack_extracting": "جارٍ استخراج حزمة الخرائط:",
         "console_maps_extracted": "✓ تم استخراج جميع حزم الخرائط بنجاح!",
@@ -600,6 +610,8 @@ TRANSLATIONS = {
         "msgbox_wine_title": "بادئة غير صالحة",
         "msgbox_wine_text1": f"يبدو أن المجلد المحدد ليس بادئة Wine.\n\nلم يتم العثور على مجلد فرعي باسم 'drive_c' بداخله:",
         "msgbox_wine_text2": "يرجى المحاولة مرة أخرى وتحديد المجلد الصحيح.",
+        "msgbox_network_title": "لا يوجد اتصال",
+        "msgbox_network_text": "تحذير: تعذّر الاتصال بموقع playgenerals.online للتحقق من وجود إصدار جديد.\nتحقق من اتصالك بالإنترنت أو حاول مرة أخرى لاحقًا.",
 
         "filefilter_gameexe": "ملف اللعبة التنفيذي",
         "filefilter_all": "كل الملفات",
@@ -696,6 +708,6 @@ TRANSLATIONS = {
 
         "about_title": "حول GENPATCHER",
         "about_subtitle": "معلومات واعتمادات مطوري هذا المشروع",
-        "about_desc": "GenPatcher Linux هو أداة مفتوحة المصدر مصممة لتكوين وتطبيق التصحيحات وتحسين Command & Conquer: Generals و Zero Hour لبيئات Wine و Proton. يقوم تلقائيًا بإعداد البادئة، وتجاوزات DLL في السجل، ومطابقة الدقة، ونشر التعديلات بشكل أصلي على توزيعات Linux.\n\nصفحة المشروع: https://github.com/ZeNx98/GenPatcher-Linux\nالمطور: ZeNx98، Fennek88 (الترجمة الألمانية، دعم Flatpak Protontricks)\n\nشكر خاص لـ:\n• Legionnaire (المؤسس الأصلي لـ GenPatcher لنظام Windows، الذي جمع إصلاحات الاستقرار وملفات المجتمع)\n• فرق Generals Online و C&C Online Community\n\nإخلاء مسؤولية: يتم توزيع هذا المشروع على أمل أن يكون مفيدًا، لكنه لا يقدم أي ضمان. تشغيل هذه التعديلات هو على مسؤوليتك الخاصة."
+        "about_desc": "GenPatcher Linux أداة مفتوحة المصدر مُصممة لإعداد وتعديل وتحسين لعبتي Command & Conquer: Generals وZero Hour للعمل ضمن بيئتي Wine وProton. تتولى الأداة تلقائيًا إعداد البادئة، وضبط تجاوزات DLL في سجل النظام، ومواءمة دقة العرض، وتثبيت التعديلات مباشرةً على توزيعات Linux.\n\nالصفحة الرئيسية للمشروع:\nhttps://github.com/ZeNx98/GenPatcher-Linux\nhttps://github.com/Fennek88/GenPatcher-Linux\n\nالمطوران: ZeNx98 وFennek88 (الترجمة الألمانية ودعم Protontricks عبر Flatpak)\n\nشكر خاص لـ:\n• Legionnaire (المنشئ الأصلي لبرنامج GenPatcher لنظام Windows، الذي جمع إصلاحات الاستقرار وملفات المجتمع)\n• فريقي Generals Online وC&C Online Community\n\nإخلاء المسؤولية: يُوزع هذا المشروع على أمل أن يكون مفيدًا، من دون أي ضمان. استخدام هذه التعديلات يقع على مسؤوليتك الخاصة."
     }
 }
