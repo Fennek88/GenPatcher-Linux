@@ -64,6 +64,18 @@ cd GenPatcher-Linux
 python3 GenPatcher.py
 ```
 
+### Build an AppImage
+
+On x86_64 Linux, install `appimagetool` and run:
+
+```bash
+./packaging/build-appimage.sh
+```
+
+The resulting `dist/GenPatcher-Linux-x86_64.AppImage` includes GenPatcher and its
+CSS, translations, images, and offline assets. It uses the host's Python 3 and
+GTK 3/PyGObject installation, which must be installed as described above.
+
 ---
 
 ## Screenshots
