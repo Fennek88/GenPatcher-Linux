@@ -57,7 +57,7 @@ jobs:
           fi
 
       - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: GenPatcher-Linux-x86_64-AppImage
           path: dist/GenPatcher-Linux-x86_64.AppImage
