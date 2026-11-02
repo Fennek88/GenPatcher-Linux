@@ -5,7 +5,7 @@ TRANSLATIONS = {
         "addons": "Addons & Tools",
         "options": "Game Settings",
         "about": "About / Info",
-        "ver_label": "v2.14 Linux GTK",
+        "ver_label": "Linux GTK",
         "lang_label": "Language:",
         
         "fixes_title": "APPLY FIXES & ONLINE SETUP",
@@ -242,7 +242,7 @@ TRANSLATIONS = {
         "addons": "Addons & Tools",
         "options": "Spieleinstellungen",
         "about": "Über / Info",
-        "ver_label": "v2.14 Linux GTK",
+        "ver_label": "Linux GTK",
         "lang_label": "Sprache:",
 
         "fixes_title": "OPTIMIERUNGEN ANWENDEN & ONLINE INSTALLATION",
@@ -479,7 +479,7 @@ TRANSLATIONS = {
         "addons": "الإضافات والأدوات",
         "options": "إعدادات اللعبة",
         "about": "حول البرنامج",
-        "ver_label": "نسخة لينكس v2.14",
+        "ver_label": "نسخة لينكس",
         "lang_label": "اللغة:",
 
         "fixes_title": "تطبيق الإصلاحات وإعداد اللعب عبر الإنترنت",

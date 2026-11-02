@@ -11,6 +11,7 @@ ZH_APP_ID = "2732960"
 ZH_GAME_FOLDER = "Command & Conquer Generals - Zero Hour"
 OFFLINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Offline")
 PROTONTRICKS_FLATPAK_ID = "com.github.Matoking.protontricks"
+version = "1.01"
 
 GAME_ROOT = ""
 GENERALS_DIR = ""
@@ -285,7 +286,8 @@ class GenPatcherGTK(Gtk.Window):
         self.logo_box_ref = logo_box
         logo_box.set_margin_top(25)
         logo_box.set_margin_bottom(2)
-        logo_box.set_margin_start(15)
+        logo_box.set_margin_start(0)
+        logo_box.set_halign(Gtk.Align.CENTER)
         
         logo_filename = os.path.join("Images", "Logo", "GenPatcher logo.png")
         logo_img_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), logo_filename)
@@ -306,11 +308,12 @@ class GenPatcherGTK(Gtk.Window):
             
         self.sidebar_box.pack_start(logo_box, False, False, 0)
         
-        self.ver_lbl = Gtk.Label(label=tr("ver_label"))
+        self.ver_lbl = Gtk.Label(label=version + " " + tr("ver_label"))
         self.ver_lbl.get_style_context().add_class("subtitle")
         self.ver_lbl.set_xalign(0)
-        self.ver_lbl.set_margin_start(15)
+        self.ver_lbl.set_margin_start(0)
         self.ver_lbl.set_margin_bottom(25)
+        self.ver_lbl.set_halign(Gtk.Align.CENTER)
         self.sidebar_box.pack_start(self.ver_lbl, False, False, 0)
         
         self.gui_lang_combo = Gtk.ComboBoxText()
@@ -1908,24 +1911,24 @@ class GenPatcherGTK(Gtk.Window):
             sc.remove_class("rtl")
 
         if is_rtl:
-            self.logo_box_ref.set_margin_start(15)
+            self.logo_box_ref.set_margin_start(0)
             self.logo_box_ref.set_margin_end(0)
-            self.logo_box_ref.set_halign(Gtk.Align.START)
-            self.ver_lbl.set_margin_start(15)
+            self.logo_box_ref.set_halign(Gtk.Align.CENTER)
+            self.ver_lbl.set_margin_start(0)
             self.ver_lbl.set_margin_end(0)
-            self.ver_lbl.set_halign(Gtk.Align.START)
+            self.ver_lbl.set_halign(Gtk.Align.CENTER)
             self.ver_lbl.set_xalign(1)
             self.lang_lbl.set_margin_start(15)
             self.lang_lbl.set_margin_end(0)
             self.lang_lbl.set_halign(Gtk.Align.START)
             self.lang_lbl.set_xalign(1)
         else:
-            self.logo_box_ref.set_margin_start(15)
+            self.logo_box_ref.set_margin_start(0)
             self.logo_box_ref.set_margin_end(0)
-            self.logo_box_ref.set_halign(Gtk.Align.START)
-            self.ver_lbl.set_margin_start(15)
+            self.logo_box_ref.set_halign(Gtk.Align.CENTER)
+            self.ver_lbl.set_margin_start(0)
             self.ver_lbl.set_margin_end(0)
-            self.ver_lbl.set_halign(Gtk.Align.START)
+            self.ver_lbl.set_halign(Gtk.Align.CENTER)
             self.ver_lbl.set_xalign(0)
             
             self.lang_lbl.set_margin_start(15)
@@ -1933,7 +1936,7 @@ class GenPatcherGTK(Gtk.Window):
             self.lang_lbl.set_halign(Gtk.Align.START)
             self.lang_lbl.set_xalign(0)
 
-        self.ver_lbl.set_text(tr("ver_label"))
+        self.ver_lbl.set_text(version + " " + tr("ver_label"))
         self.lang_lbl.set_text(tr("lang_label"))
 
         self.nav_btns["fixes"].set_label(tr("apply_fixes"))
