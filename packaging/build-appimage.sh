@@ -23,7 +23,7 @@ rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/share/genpatcher" "$APPDIR/usr/share/icons/hicolor/256x256/apps" "$ROOT/dist"
 
 cp "$ROOT/GenPatcher.py" "$APPDIR/usr/share/genpatcher/"
-cp -a "$ROOT/CSS" "$ROOT/lang" "$ROOT/Offline" "$APPDIR/usr/share/genpatcher/"
+cp -a "$ROOT/CSS" "$ROOT/lang" "$ROOT/Offline" "$ROOT/Images" "$APPDIR/usr/share/genpatcher/"
 cp "$ROOT/Images/Logo/GenPatcher logo.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/genpatcher.png"
 cp "$ROOT/Images/Logo/GenPatcher logo.png" "$APPDIR/genpatcher.png"
 cp "$ROOT/packaging/AppRun" "$ROOT/packaging/genpatcher.desktop" "$APPDIR/"
