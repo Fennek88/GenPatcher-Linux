@@ -105,7 +105,7 @@ def protontricks_cmd(wine_command, app_id=ZH_APP_ID):
     if backend == "flatpak":
         return [
             "flatpak", "run", PROTONTRICKS_FLATPAK_ID,
-            str(app_id), "-c", wine_command,
+            "-c", wine_command, str(app_id),
         ]
     raise RuntimeError(
         tr("protontricks_notfound") + f" {PROTONTRICKS_FLATPAK_ID}."
@@ -864,7 +864,7 @@ class GenPatcherGTK(Gtk.Window):
                 reg_cmd = protontricks_cmd(
                     "wine reg add 'HKCU\\Software\\Wine\\DllOverrides' /v d3d8 /t REG_SZ /d native,builtin /f"
                 )
-                subprocess.run(reg_cmd, capture_output=True, check=True)
+                subprocess.run(reg_cmd, capture_output=True, text=True, check=True)
                 self.thread_log(tr("console_gentool"))
             
             import urllib.request
@@ -999,6 +999,12 @@ class GenPatcherGTK(Gtk.Window):
             self.update_progress(100, tr("console_patches_installed"))
             GLib.idle_add(self.load_diagnostics)
             GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_patchesonline"))
+        except subprocess.CalledProcessError as e:
+            self.update_progress(0, tr("console_error") + f" {e}")
+            if e.stderr and e.stderr.strip():
+                self.thread_log(tr("console_command_stderr") + e.stderr.strip())
+            if e.stdout and e.stdout.strip():
+                self.thread_log(tr("console_command_stdout") + e.stdout.strip())
         except Exception as e:
             self.update_progress(0, tr("console_error") + f" {str(e)}")
 
@@ -1108,10 +1114,22 @@ class GenPatcherGTK(Gtk.Window):
             import shlex
             wine_dir_param = f"Z:{GAME_ROOT}"
             inner_cmd = f"cd {shlex.quote(GAME_ROOT)} && wine GeneralsOnline_setup.exe {shlex.quote(wine_exe_param)} /DIR={shlex.quote(wine_dir_param)}"
-            subprocess.run(protontricks_cmd(inner_cmd), capture_output=True, text=True)
+            res = subprocess.run(protontricks_cmd(inner_cmd), capture_output=True, text=True)
             
             if os.path.exists(installer_path):
                 os.remove(installer_path)
+
+            if res.returncode != 0:
+                self.thread_log(tr("console_installer_exit_status").format(status=res.returncode))
+                if res.stderr.strip():
+                    self.thread_log(tr("console_installer_stderr") + res.stderr.strip())
+                self.update_progress(0, tr("console_error_GenOnline_failed"))
+                GLib.idle_add(
+                    self.show_message_box,
+                    tr("msgbox_failed_title"),
+                    tr("console_error_GenOnline_failed"),
+                )
+                return
                 
             ver_file = os.path.join(GAME_ROOT, "generals_online_version.txt")
             with open(ver_file, "w") as f:
@@ -1229,9 +1247,15 @@ class GenPatcherGTK(Gtk.Window):
             reg_cmd = protontricks_cmd(
                 "wine reg add 'HKCU\\Software\\Wine\\DllOverrides' /v d3d8 /t REG_SZ /d native,builtin /f"
             )
-            subprocess.run(reg_cmd, capture_output=True, check=True)
+            subprocess.run(reg_cmd, capture_output=True, text=True, check=True)
             self.update_progress(100, tr("console_installed_gentool"))
             GLib.idle_add(self.show_message_box, tr("msgbox_success_title"), tr("msgbox_success_text_gentool"))
+        except subprocess.CalledProcessError as e:
+            self.update_progress(0, tr("console_error") + f" {e}")
+            if e.stderr and e.stderr.strip():
+                self.thread_log(tr("console_command_stderr") + e.stderr.strip())
+            if e.stdout and e.stdout.strip():
+                self.thread_log(tr("console_command_stdout") + e.stdout.strip())
         except Exception as e:
             self.update_progress(0, tr("console_error") + f" {str(e)}")
 
