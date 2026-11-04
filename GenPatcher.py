@@ -11,7 +11,7 @@ ZH_APP_ID = "2732960"
 ZH_GAME_FOLDER = "Command & Conquer Generals - Zero Hour"
 OFFLINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Offline")
 PROTONTRICKS_FLATPAK_ID = "com.github.Matoking.protontricks"
-version = "1.01"
+version = "1.0.2"
 
 GAME_ROOT = ""
 GENERALS_DIR = ""
