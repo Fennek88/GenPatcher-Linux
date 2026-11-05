@@ -11,7 +11,9 @@ ZH_APP_ID = "2732960"
 ZH_GAME_FOLDER = "Command & Conquer Generals - Zero Hour"
 OFFLINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Offline")
 PROTONTRICKS_FLATPAK_ID = "com.github.Matoking.protontricks"
-version = "1.0.2"
+version = "1.0.3"
+GITHUB_API_LATEST_RELEASE = "https://api.github.com/repos/Fennek88/GenPatcher-Linux/releases/latest"
+GITHUB_RELEASES_PAGE = "https://github.com/Fennek88/GenPatcher-Linux/releases/latest"
 
 GAME_ROOT = ""
 GENERALS_DIR = ""
@@ -249,6 +251,7 @@ class GenPatcherGTK(Gtk.Window):
         ] + self._addon_buttons
 
         threading.Thread(target=self.startup_update_check, daemon=True).start()
+        threading.Thread(target=self.app_update_check, daemon=True).start()
 
     def set_busy(self):
         """Disable all install buttons while a worker is running."""
@@ -1007,6 +1010,196 @@ class GenPatcherGTK(Gtk.Window):
                 self.thread_log(tr("console_command_stdout") + e.stdout.strip())
         except Exception as e:
             self.update_progress(0, tr("console_error") + f" {str(e)}")
+
+    @staticmethod
+    def parse_app_version(text):
+        """Turn 'v1.0.2' into (1, 0, 2); returns None if unparsable."""
+        try:
+            return tuple(int(p) for p in text.strip().lstrip("vV").split("."))
+        except (ValueError, AttributeError):
+            return None
+
+    def fetch_latest_app_release(self):
+        """Returns (tag, release_url, notes, assets) of the latest GitHub release, or None on any failure."""
+        import json
+        import urllib.request
+        try:
+            req = urllib.request.Request(
+                GITHUB_API_LATEST_RELEASE,
+                headers={"Accept": "application/vnd.github+json", "User-Agent": f"GenPatcher-Linux/{version}"}
+            )
+            with urllib.request.urlopen(req, timeout=10) as response:
+                data = json.loads(response.read().decode("utf-8"))
+            return (data["tag_name"], data.get("html_url") or GITHUB_RELEASES_PAGE,
+                    data.get("body") or "", data.get("assets") or [])
+        except Exception:
+            return None
+
+    def app_update_check(self, manual=False):
+        if not manual:
+            import time
+            time.sleep(3)
+        release = self.fetch_latest_app_release()
+        latest = current = None
+        if release:
+            tag, url, notes, assets = release
+            latest = self.parse_app_version(tag)
+            current = self.parse_app_version(version)
+        if latest and current and latest > current:
+            GLib.idle_add(self.prompt_for_app_update, tag.lstrip("vV"), url, notes, assets)
+        elif manual:
+            if latest and current:
+                GLib.idle_add(self.show_message_box, tr("app_update_uptodate_title"),
+                              tr("app_update_uptodate_text").format(current=version))
+            else:
+                GLib.idle_add(self.show_message_box, tr("app_update_network_title"), tr("app_update_network_text"))
+        if manual:
+            GLib.idle_add(self.btn_app_update.set_sensitive, True)
+
+    @staticmethod
+    def pick_appimage_asset(assets):
+        """Pick the AppImage (raw or zipped) and an optional .sha256 asset from the release assets."""
+        main = checksum = None
+        for a in assets:
+            name = a.get("name", "")
+            lower = name.lower()
+            if lower.endswith(".appimage.sha256"):
+                checksum = a
+            elif lower.endswith(".appimage") and (main is None or not main["name"].lower().endswith(".appimage")):
+                main = a
+            elif lower.endswith(".zip") and "appimage" in lower and main is None:
+                main = a
+        return main, checksum
+
+    def can_self_update(self, assets):
+        appimage = os.environ.get("APPIMAGE")
+        if not appimage or not os.path.isfile(appimage):
+            return False
+        if not os.access(os.path.dirname(appimage), os.W_OK):
+            return False
+        return self.pick_appimage_asset(assets)[0] is not None
+
+    def prompt_for_app_update(self, latest_version, url, notes, assets=()):
+        can_update = self.can_self_update(assets)
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.NONE,
+            text=tr("app_update_title")
+        )
+        dialog.add_button(tr("app_update_later"), Gtk.ResponseType.CANCEL)
+        dialog.add_button(tr("app_update_open"), Gtk.ResponseType.ACCEPT)
+        if can_update:
+            dialog.add_button(tr("app_update_now"), Gtk.ResponseType.YES)
+        secondary = tr("app_update_text").format(current=version, latest=latest_version)
+        if notes.strip():
+            secondary += "\n\n" + notes.strip()[:800]
+        dialog.format_secondary_text(secondary)
+        response = dialog.run()
+        dialog.destroy()
+        if response == Gtk.ResponseType.ACCEPT:
+            try:
+                Gtk.show_uri_on_window(self, url, Gdk.CURRENT_TIME)
+            except Exception as e:
+                self.write_log(tr("console_error_openfolder") + f" {str(e)}")
+        elif response == Gtk.ResponseType.YES:
+            self.set_busy()
+            threading.Thread(target=self.run_app_self_update, args=(list(assets),), daemon=True).start()
+        return False
+
+    def run_app_self_update(self, assets):
+        import urllib.request
+        import hashlib
+        import zipfile
+        import tempfile
+        appimage = os.environ.get("APPIMAGE")
+        tmp_dl = tmp_bin = None
+        try:
+            main, checksum_asset = self.pick_appimage_asset(assets)
+            headers = {"User-Agent": f"GenPatcher-Linux/{version}"}
+
+            expected = (main.get("digest") or "").removeprefix("sha256:").strip().lower()
+            if not expected and checksum_asset:
+                req = urllib.request.Request(checksum_asset["browser_download_url"], headers=headers)
+                with urllib.request.urlopen(req, timeout=30) as r:
+                    expected = r.read().decode("utf-8").split()[0].strip().lower()
+            if not expected:
+                raise RuntimeError(tr("console_app_update_no_checksum"))
+
+            target_dir = os.path.dirname(appimage)
+            self.update_progress(0, tr("console_app_update_downloading").format(name=main["name"]))
+            fd, tmp_dl = tempfile.mkstemp(prefix=".GenPatcher-update-", dir=target_dir)
+            sha = hashlib.sha256()
+            total = main.get("size") or 0
+            done = 0
+            req = urllib.request.Request(main["browser_download_url"], headers=headers)
+            with urllib.request.urlopen(req, timeout=30) as resp, os.fdopen(fd, "wb") as out:
+                while True:
+                    chunk = resp.read(1024 * 256)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    sha.update(chunk)
+                    done += len(chunk)
+                    if total:
+                        GLib.idle_add(self.progressbar.set_fraction, min(done / total, 1.0) * 0.9)
+
+            self.update_progress(90, tr("console_app_update_verifying"))
+            if sha.hexdigest() != expected:
+                raise RuntimeError(tr("console_app_update_checksum_failed"))
+
+            if main["name"].lower().endswith(".zip"):
+                with zipfile.ZipFile(tmp_dl) as zf:
+                    members = [m for m in zf.namelist() if m.lower().endswith(".appimage")]
+                    if not members:
+                        raise RuntimeError(tr("console_app_update_no_appimage_in_zip"))
+                    fd2, tmp_bin = tempfile.mkstemp(prefix=".GenPatcher-update-", dir=target_dir)
+                    with zf.open(members[0]) as src, os.fdopen(fd2, "wb") as dst:
+                        shutil.copyfileobj(src, dst)
+                os.remove(tmp_dl)
+                tmp_dl = None
+            else:
+                tmp_bin, tmp_dl = tmp_dl, None
+
+            with open(tmp_bin, "rb") as f:
+                if f.read(4) != b"\x7fELF":
+                    raise RuntimeError(tr("console_app_update_invalid_file"))
+            os.chmod(tmp_bin, 0o755)
+            os.replace(tmp_bin, appimage)
+            tmp_bin = None
+
+            self.update_progress(100, tr("console_app_update_installed"))
+            GLib.idle_add(self.prompt_restart_after_update)
+        except Exception as e:
+            self.update_progress(0, tr("console_app_update_failed") + f" {str(e)}")
+        finally:
+            for leftover in (tmp_dl, tmp_bin):
+                if leftover and os.path.exists(leftover):
+                    try:
+                        os.remove(leftover)
+                    except OSError:
+                        pass
+            self.clear_busy()
+
+    def prompt_restart_after_update(self):
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            flags=0,
+            message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text=tr("app_update_done_title")
+        )
+        dialog.format_secondary_text(tr("app_update_done_text"))
+        response = dialog.run()
+        dialog.destroy()
+        if response == Gtk.ResponseType.YES:
+            appimage = os.environ.get("APPIMAGE")
+            try:
+                os.execv(appimage, [appimage] + sys.argv[1:])
+            except OSError as e:
+                self.write_log(tr("console_app_update_failed") + f" {str(e)}")
+        return False
 
     def startup_update_check(self):
         import time
@@ -1894,6 +2087,16 @@ class GenPatcherGTK(Gtk.Window):
         self.links_box.pack_start(self.btn_gp, True, True, 0)
         page_box.pack_start(self.links_box, False, False, 0)
 
+        self.btn_app_update = Gtk.Button(label=tr("btn_app_check_update"))
+        self.btn_app_update.get_style_context().add_class("btn-secondary")
+        self.btn_app_update.set_margin_top(10)
+        self.btn_app_update.connect("clicked", self.on_app_update_clicked)
+        page_box.pack_start(self.btn_app_update, False, False, 0)
+
+    def on_app_update_clicked(self, button):
+        button.set_sensitive(False)
+        threading.Thread(target=self.app_update_check, args=(True,), daemon=True).start()
+
     def on_gui_lang_changed(self, combo):
         global CURRENT_LANG
         active_id = combo.get_active_id()
@@ -2037,6 +2240,7 @@ class GenPatcherGTK(Gtk.Window):
         self.lbl_go.set_text(tr("btn_generals_online"))
         self.lbl_gt.set_text(tr("btn_gentool_page"))
         self.lbl_gp.set_text(tr("btn_genpatcher_page"))
+        self.btn_app_update.set_label(tr("btn_app_check_update"))
 
     def set_direction_recursive(self, widget, direction):
         widget.set_direction(direction)

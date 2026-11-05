@@ -75,6 +75,14 @@ python3 GenPatcher.py
 
 ---
 
+
+## Updates
+
+From version 1.0.3 the application has a built in self-update-function that checks for new releases and updates itself automatically or on request.
+
+---
+
+
 ## Screenshots
 
 ![Screenshot](Images/Screenshots/screenshot1.png)

@@ -6,6 +6,7 @@ on:
       - master
     tags:
       - "v*"
+      - "[0-9]*"
   pull_request:
   workflow_dispatch:
 
@@ -63,3 +64,38 @@ jobs:
           path: dist/GenPatcher-Linux-x86_64.AppImage
           if-no-files-found: error
           retention-days: 14
+
+  # Runs only when a version tag is pushed; normal pushes and PRs just build.
+  release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Verify tag matches in-app version
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          app_version="$(sed -n 's/^version = "\(.*\)"/\1/p' GenPatcher.py)"
+          if [ "$tag" != "$app_version" ]; then
+            echo "Tag '$GITHUB_REF_NAME' does not match version '$app_version' in GenPatcher.py" >&2
+            exit 1
+          fi
+
+      - name: Download AppImage artifact
+        uses: actions/download-artifact@v6
+        with:
+          name: GenPatcher-Linux-x86_64-AppImage
+
+      - name: Create checksum
+        run: sha256sum GenPatcher-Linux-x86_64.AppImage > GenPatcher-Linux-x86_64.AppImage.sha256
+
+      - name: Publish release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            GenPatcher-Linux-x86_64.AppImage
+            GenPatcher-Linux-x86_64.AppImage.sha256
