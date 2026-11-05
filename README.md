@@ -60,7 +60,14 @@ The graphical user interface is built on PyGObject (GTK 3). Install the necessar
 ### Download AppImage
 
 Download the latest AppImage from the [releases page](https://github.com/Fennek88/GenPatcher-Linux/releases).
-Then Double-click the AppImage to run it.
+Browsers download it without the executable permission, so make it executable first:
+right-click the file → Properties → Permissions → "Allow executing as program", or run:
+
+```bash
+chmod +x GenPatcher-Linux-x86_64.AppImage
+```
+
+Then double-click the AppImage to run it.
 
 
 ### Clone repository and run Python app
