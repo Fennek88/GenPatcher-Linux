@@ -11,9 +11,13 @@ ZH_APP_ID = "2732960"
 ZH_GAME_FOLDER = "Command & Conquer Generals - Zero Hour"
 OFFLINE_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "Offline")
 PROTONTRICKS_FLATPAK_ID = "com.github.Matoking.protontricks"
-version = "1.0.3"
+version = "1.0.4"
 GITHUB_API_LATEST_RELEASE = "https://api.github.com/repos/Fennek88/GenPatcher-Linux/releases/latest"
 GITHUB_RELEASES_PAGE = "https://github.com/Fennek88/GenPatcher-Linux/releases/latest"
+SETTINGS_FILE = os.path.join(
+    os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"),
+    "genpatcher-linux", "settings.json"
+)
 
 GAME_ROOT = ""
 GENERALS_DIR = ""
@@ -1012,6 +1016,28 @@ class GenPatcherGTK(Gtk.Window):
             self.update_progress(0, tr("console_error") + f" {str(e)}")
 
     @staticmethod
+    def load_settings():
+        import json
+        try:
+            with open(SETTINGS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else {}
+        except (OSError, ValueError):
+            return {}
+
+    @staticmethod
+    def save_setting(key, value):
+        import json
+        data = GenPatcherGTK.load_settings()
+        data[key] = value
+        try:
+            os.makedirs(os.path.dirname(SETTINGS_FILE), exist_ok=True)
+            with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+        except OSError:
+            pass
+
+    @staticmethod
     def parse_app_version(text):
         """Turn 'v1.0.2' into (1, 0, 2); returns None if unparsable."""
         try:
@@ -1045,8 +1071,10 @@ class GenPatcherGTK(Gtk.Window):
             tag, url, notes, assets = release
             latest = self.parse_app_version(tag)
             current = self.parse_app_version(version)
+        skipped = self.load_settings().get("skipped_app_version")
         if latest and current and latest > current:
-            GLib.idle_add(self.prompt_for_app_update, tag.lstrip("vV"), url, notes, assets)
+            if manual or self.parse_app_version(skipped or "") != latest:
+                GLib.idle_add(self.prompt_for_app_update, tag.lstrip("vV"), url, notes, assets)
         elif manual:
             if latest and current:
                 GLib.idle_add(self.show_message_box, tr("app_update_uptodate_title"),
@@ -1088,6 +1116,7 @@ class GenPatcherGTK(Gtk.Window):
             buttons=Gtk.ButtonsType.NONE,
             text=tr("app_update_title")
         )
+        dialog.add_button(tr("app_update_skip"), Gtk.ResponseType.REJECT)
         dialog.add_button(tr("app_update_later"), Gtk.ResponseType.CANCEL)
         dialog.add_button(tr("app_update_open"), Gtk.ResponseType.ACCEPT)
         if can_update:
@@ -1098,7 +1127,9 @@ class GenPatcherGTK(Gtk.Window):
         dialog.format_secondary_text(secondary)
         response = dialog.run()
         dialog.destroy()
-        if response == Gtk.ResponseType.ACCEPT:
+        if response == Gtk.ResponseType.REJECT:
+            self.save_setting("skipped_app_version", latest_version)
+        elif response == Gtk.ResponseType.ACCEPT:
             try:
                 Gtk.show_uri_on_window(self, url, Gdk.CURRENT_TIME)
             except Exception as e:
